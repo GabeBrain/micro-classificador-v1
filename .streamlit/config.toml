@@ -1,0 +1,24 @@
+# .streamlit/config.toml
+
+[theme]
+
+# Cor primária de destaque (widgets, botões, etc.)
+primaryColor="#006400"  # Verde Escuro
+
+# Cor de fundo principal da aplicação
+backgroundColor="#FFFFFF"  # Branco
+
+# Cor de fundo de elementos secundários (como a barra lateral)
+secondaryBackgroundColor="#F0F2F6"  # Um cinza bem claro, para dar contraste
+
+# Cor do texto principal
+textColor="#31333F"  # Um cinza escuro, mais suave que o preto puro
+
+# Fonte a ser usada (opções: "sans serif", "serif", "monospace")
+font="sans serif"
+
+[server]
+headless = true
+# NÃO defina server.port nem server.address na Cloud
+enableCORS = false
+enableXsrfProtection = false

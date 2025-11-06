@@ -1,0 +1,20 @@
+
+---
+
+# O que fica para a v2 (já mapeado)
+- **Deduplicação** (token_set_ratio + haversine), política de “keep”.  
+- **Auditoria detalhada** (antes/depois por campo, id da regra).  
+- **Integração Google Sheets** (gspread + “refresh”).  
+- **UI de revisão** para baixa confiança e **pendências de mapeamento**.  
+- **Relatórios completos** (confusão entre subcategorias, top termos não mapeados, etc.).  
+- **Modelo semântico um pouco melhor** (embeddings multilíngues em CPU) — opcional.
+
+---
+
+## validar 
+1) Suba o repo vazio, cole os arquivos.  
+2) `pip install -r requirements.txt`  
+3) `streamlit run app_streamlit.py`  
+4) Carregue **Mapeamento_Subcategorias_V1.xlsx** e seu arquivo real.  
+5) Verifique as métricas e a tabela de **baixa confiança**.  
+6) Baixe o XLSX final 
