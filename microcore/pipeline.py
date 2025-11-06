@@ -103,7 +103,7 @@ def process_dataframe(df_in: pd.DataFrame,
             k_norm = norm_text(str(df.at[i, "Sub-Categoria"]))
             df.loc[i] = _apply_guard_rail(df.loc[i], k_norm)
     
-    # 2.1) Validador semântico universal (aplica em todos os determinísticos)
+    # 2.1) Validador semântico universal (somente Nome como entrada)
     det_mask = df["fonte"].isin(["catalogo", "catalogo-contains"])
     idx_det = df.index[det_mask].tolist()
 
@@ -113,25 +113,26 @@ def process_dataframe(df_in: pd.DataFrame,
         vec_val, X_val = _build_tfidf_index(target_terms_norm)
 
         for i in idx_det:
-            bag = " ".join(str(df.at[i, c]) for c in text_columns)
-            q = norm_text(bag)
-            if not q:
+            nome = str(df.at[i, "Nome"])
+            if not nome or nome.strip().lower() in ["nan", "none", ""]:
                 continue
+
+            q = norm_text(nome)
             pred_norm, sim = _semantic_match(q, vec_val, X_val, target_terms_norm)
             human_pred = mapping_df.loc[
                 mapping_df["k_nova"] == pred_norm, "Nova SubCat"
             ].head(1).values
 
             atual = str(df.at[i, "Sub-Categoria"]).strip().lower()
+            # 🎯 nova regra: reclassificar se divergir e tiver sim >= 0.70 (antes 0.85)
             if len(human_pred) > 0:
                 nova_pred = str(human_pred[0]).strip().lower()
-                # se modelo diverge do determinístico e tem boa confiança, reclassifica
-                if nova_pred != atual and sim >= 0.85:
+                if nova_pred != atual and sim >= 0.70:
                     df.at[i, "Sub-Categoria"] = human_pred[0]
                     df.at[i, "acao"] = "Corrigir"
                     df.at[i, "fonte"] = "semantico-validador"
                     df.at[i, "confianca"] = round(float(sim), 4)
-                    # guard-rail de categoria
+                    # guard-rail de categoria (corrige conforme o catálogo)
                     k_norm = norm_text(str(human_pred[0]))
                     cat_oficial = mapping_df.loc[
                         mapping_df["k_nova"] == k_norm, "categoria_oficial"
@@ -139,7 +140,7 @@ def process_dataframe(df_in: pd.DataFrame,
                     if len(cat_oficial) > 0:
                         df.at[i, "Categoria"] = cat_oficial[0]
 
-
+                        
     # 3) Semântico leve (TF-IDF) nos remanescentes
     pending = df["acao"].isna()
     pending_idx = df.index[pending].tolist()
