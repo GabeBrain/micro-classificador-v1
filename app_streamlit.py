@@ -1,6 +1,7 @@
 import io
 import time
 import pandas as pd
+import numpy as np
 import streamlit as st
 
 from microcore.pipeline import process_dataframe
@@ -95,8 +96,48 @@ st.markdown("### 1) Catálogo (Google Sheets fixo)")
 
 try:
     mapping_df = load_mapping_gsheets()
-    st.success(f"Catálogo carregado: {len(mapping_df)} mapeamentos em {mapping_df['categoria_oficial'].nunique()} abas.")
-    st.dataframe(mapping_df.head(20), use_container_width=True)
+    # ---- resumo geral ----
+    num_cats = mapping_df["categoria_oficial"].nunique()
+    num_mapeamentos = len(mapping_df)
+    num_subcats_orig = mapping_df["SubCat Original"].nunique()
+    num_subcats_novas = mapping_df["Nova SubCat"].nunique()
+
+    st.success(
+        f"✅ Catálogo carregado com **{num_cats} categorias**, "
+        f"**{num_subcats_orig} subcategorias originais** e "
+        f"**{num_subcats_novas} novas subcategorias** "
+        f"({num_mapeamentos} mapeamentos totais)."
+    )
+
+    # ---- tabela resumo por categoria ----
+    resumo = (
+        mapping_df.groupby("categoria_oficial")
+        .agg(
+            Subcats_Originais=("SubCat Original", "nunique"),
+            Novas_Subcats=("Nova SubCat", "nunique"),
+            Mapeamentos=("SubCat Original", "count"),
+        )
+        .sort_index()
+        .reset_index()
+    )
+
+    st.markdown("#### 📊 Resumo por categoria")
+    st.dataframe(resumo, use_container_width=True)
+
+    # ---- expanders por categoria ----
+    st.markdown("#### 🔍 Detalhamento por categoria")
+    for cat in resumo["categoria_oficial"]:
+        subset = mapping_df[mapping_df["categoria_oficial"] == cat].copy()
+        total_mapeamentos = len(subset)
+        total_novas = subset["Nova SubCat"].nunique()
+        with st.expander(f"{cat} — {total_mapeamentos} mapeamentos, {total_novas} novas subcategorias"):
+            # agrupamento interno: Nova SubCat -> quantas originais apontam
+            sub_stats = (
+                subset.groupby("Nova SubCat")
+                .agg(Originais=("SubCat Original", "nunique"))
+                .sort_values("Originais", ascending=False)
+            )
+            st.dataframe(sub_stats, use_container_width=True)
 except Exception as e:
     st.error(f"Erro ao carregar catálogo do Google Sheets: {e}")
     st.stop()
