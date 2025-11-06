@@ -6,6 +6,9 @@ from microcore.catalog_loader import load_mapping_xlsx
 from microcore.pipeline import process_dataframe
 from microcore.catalog_loader import load_mapping_gsheets, load_mapping_xlsx  # noqa: F811
 
+# === Config do catálogo (URL fixa do Google Sheets) ===
+SHEET_URL = "https://docs.google.com/spreadsheets/d/<SEU_ID>/edit#gid=0"
+TABS_DEFAULT = ["Alimentação","Automotivo","Serviços","Decoração","Moda","Educação","Inst. Financeira","Saúde e Bem Estar","Outros"]
 
 # ---------- Config da página ----------
 st.set_page_config(
@@ -89,59 +92,35 @@ with st.sidebar:
         "- Use um mapeamento enxuto para ver o semântico atuar."
     )
 
-# ---------- Etapa 1: Catálogo (Google Sheets OU arquivo local) ----------
+# ---------- Etapa 1: Catálogo (Mapeamento via Google Sheets FIXO) ----------
 st.markdown("### 1) Catálogo (Mapeamento)")
 
 with st.container():
-    mode = st.radio(
-        "Fonte do catálogo:",
-        ["Google Sheets (recomendado)", "Arquivo local (.xlsx)"],
-        horizontal=True
+    st.info(
+        "O catálogo é carregado **diretamente do Google Sheets** (URL fixa no código). "
+        "As **abas** definem a *categoria_oficial* de cada subcategoria e impõem os guard-rails."
     )
-
-mapping_df = None
-
-if mode == "Google Sheets (recomendado)":
-    gs_url = st.text_input(
-        "URL público da planilha do Google Sheets",
-        placeholder="https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0",
-        help="Compartilhe a planilha como 'Qualquer pessoa com o link: Leitor'."
-    )
-    tabs_default = ["Alimentação","Automotivo","Serviços","Decoração","Moda","Educação","Inst. Financeira","Saúde e Bem Estar","Outros"]
+    # opção de editar as abas se quiser testar variações; pode fixar se preferir
     tabs_str = st.text_input(
         "Nomes das abas (separados por vírgula)",
-        value=", ".join(tabs_default)
+        value=", ".join(TABS_DEFAULT),
+        help="As abas devem corresponder exatamente às guias do arquivo do Google Sheets (acentos e espaços inclusos)."
     )
+    reload_cat = st.button("🔄 Recarregar catálogo", use_container_width=False)
 
-    if gs_url and tabs_str.strip():
-        tabs = [t.strip() for t in tabs_str.split(",") if t.strip()]
-        try:
-            mapping_df = load_mapping_gsheets(gs_url, tabs)
-            st.success(f"Catálogo (GS) carregado: **{len(mapping_df)}** mapeamentos em {len(tabs)} abas.")
-            st.dataframe(mapping_df.head(15), use_container_width=True)
-        except Exception as e:
-            st.error(f"Erro ao carregar Google Sheets: {e}")
-            st.stop()
-    else:
-        st.info("Informe a URL do Google Sheets e as abas.")
-        st.stop()
-
+# Carregar catálogo (sempre do Google Sheets)
+if tabs_str.strip():
+    tabs = [t.strip() for t in tabs_str.split(",") if t.strip()]
 else:
-    map_file = st.file_uploader(
-        "Envie **Mapeamento_Subcategorias_V1.xlsx**",
-        type=["xlsx"], key="map",
-        help="Colunas: 'SubCat Original' e 'Nova SubCat'."
-    )
-    if not map_file:
-        st.info("Envie o arquivo de mapeamento para continuar.")
-        st.stop()
-    try:
-        mapping_df = load_mapping_xlsx(map_file)
-        st.success(f"Catálogo (local) carregado: **{len(mapping_df)}** mapeamentos.")
-        st.dataframe(mapping_df.head(15), use_container_width=True)
-    except Exception as e:
-        st.error(f"Erro ao carregar mapeamento: {e}")
-        st.stop()
+    tabs = TABS_DEFAULT
+
+try:
+    mapping_df = load_mapping_gsheets(SHEET_URL, tabs)
+    st.success(f"Catálogo (Google Sheets) carregado: **{len(mapping_df)}** mapeamentos em {len(tabs)} abas.")
+    st.dataframe(mapping_df.head(15), use_container_width=True)
+except Exception as e:
+    st.error(f"Erro ao carregar Google Sheets: {e}")
+    st.stop()
 
 # ---------- Etapa 2: Entrada ----------
 st.markdown("### 2) Arquivo de entrada")
