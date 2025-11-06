@@ -85,11 +85,7 @@ with st.sidebar:
     lo = st.slider("Limiar baixa confiança (mínimo para aplicar)", 0.10, hi, 0.70, 0.01)
     st.caption("Scores < baixo permanecem como **Manter** (sem alteração).")
     st.markdown("---")
-    st.markdown("#### Dicas")
-    st.write(
-        "- Deixe **0.90** e **0.70** para uma demo equilibrada.\n"
-        "- Use um mapeamento enxuto para ver o semântico atuar."
-    )
+    
 
 # ---------- Etapa 1: Catálogo (Google Sheets fixo) ----------
 st.markdown("### 1) Catálogo (Google Sheets fixo)")
