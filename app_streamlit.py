@@ -1,7 +1,6 @@
 import io
 import time
 import pandas as pd
-import numpy as np
 import streamlit as st
 
 from microcore.pipeline import process_dataframe
@@ -188,21 +187,100 @@ m4.metric("Inferidos (semântico)", metrics["inferido"])
 m5.metric("Mantidos", metrics["manter"])
 m6.metric("Excluídos", metrics["excluidos"])
 
-# ---------- Baixa confiança ----------
-st.markdown("### 5) Inferências de baixa confiança")
-st.caption("Inferências semânticas com **score < limiar alto** (ex.: 0.90).")
-st.markdown('<div class="card">', unsafe_allow_html=True)
-if len(baixa_conf) == 0:
-    st.success("Nenhuma inferência de baixa confiança 🎉")
-else:
-    st.dataframe(baixa_conf, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# ---------- Painel geral de reclassificações ----------
+st.markdown("### 5) Resultados das reclassificações")
 
-# ---------- Resultado final ----------
-st.markdown("### 6) Resultado final (sem 'Excluir')")
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.dataframe(df_final.head(50), use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# precisamos do df_original (com todas as linhas, inclusive Excluir)
+# pipeline.py já produz df_final (sem Excluir) — então refaça um merge leve pra mostrar os antes/depois
+# Como df_in e df_final não têm a mesma ordem, usamos ID se existir.
+cols_possible = ["ID","Nome","Categoria","Sub-Categoria","acao","fonte","confianca"]
+df_out = df_in.copy()
+
+# se pipeline incluiu 'acao' etc., ótimo; senão, mergeia:
+if "acao" not in df_out.columns and "acao" in df_final.columns:
+    # tentativa de merge simples por ID se existir
+    if "ID" in df_out.columns and "ID" in df_final.columns:
+        df_out = df_out.merge(
+            df_final[["ID","Sub-Categoria","Categoria","acao","fonte","confianca"]],
+            on="ID", how="left", suffixes=("_original","_novo")
+        )
+    else:
+        # fallback por índice
+        df_out = df_out.join(
+            df_final[["Sub-Categoria","Categoria","acao","fonte","confianca"]],
+            how="left", rsuffix="_novo"
+        )
+else:
+    # já vem completo
+    df_out = df_final.copy()
+
+# renomear colunas pro painel
+rename_map = {
+    "Sub-Categoria_original": "SubCat Original",
+    "Sub-Categoria_novo": "SubCat Nova",
+    "Categoria_original": "Cat Original",
+    "Categoria_novo": "Cat Nova",
+}
+df_out = df_out.rename(columns=rename_map)
+
+# selecionar colunas finais
+cols_show = [
+    c for c in [
+        "ID","Nome",
+        "Cat Original","Cat Nova",
+        "SubCat Original","SubCat Nova",
+        "acao","fonte","confianca"
+    ] if c in df_out.columns
+]
+
+# ordena por tipo de ação para facilitar visualização
+if "acao" in df_out.columns:
+    df_out["acao"] = pd.Categorical(
+        df_out["acao"],
+        categories=["Corrigir","Inferir","Manter","Excluir"],
+        ordered=True
+    )
+    df_out = df_out.sort_values("acao")
+
+st.dataframe(df_out[cols_show], use_container_width=True)
+
+
+# ---------- Análise descritiva por categoria/subcategoria ----------
+st.markdown("### 6) Análise descritiva das subcategorias (sem 'Excluir')")
+
+# garantir que temos as colunas certas
+if not {"Categoria","Sub-Categoria"}.issubset(df_final.columns):
+    st.warning("Colunas 'Categoria' e 'Sub-Categoria' não encontradas no resultado final.")
+else:
+    # calcula percentual por categoria
+    summary = (
+        df_final.groupby(["Categoria","Sub-Categoria"])
+        .size()
+        .groupby(level=0)
+        .apply(lambda x: 100 * x / float(x.sum()))
+        .reset_index(name="Percentual")
+    )
+    summary["Percentual"] = summary["Percentual"].round(2)
+
+    st.caption("Distribuição percentual de registros por categoria e subcategoria")
+    st.dataframe(summary, use_container_width=True)
+
+    # se quiser algo mais visual, dá pra incluir um gráfico de barras horizontal:
+    import altair as alt
+    st.markdown("#### 📊 Distribuição visual")
+    chart = (
+        alt.Chart(summary)
+        .mark_bar()
+        .encode(
+            y=alt.Y("Categoria:N", sort="-x", title="Categoria"),
+            x=alt.X("Percentual:Q", title="% de registros"),
+            color=alt.Color("Sub-Categoria:N", legend=alt.Legend(title="Subcategoria")),
+            tooltip=["Categoria","Sub-Categoria","Percentual"]
+        )
+        .properties(height=400)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
 
 # ---------- Download ----------
 st.markdown("### 7) Baixar resultado")
