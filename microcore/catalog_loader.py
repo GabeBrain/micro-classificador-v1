@@ -39,11 +39,11 @@ def _find_column(df: pd.DataFrame, targets: set[str]) -> str | None:
     return None
 
 # conjuntos-alvo aceitando variações
-ORIG_TARGETS = {
+ORIG_TARGETS = {"SubCat_Original",
     "subcat original", "subcategoria original", "subcat", "sub categoria original", "sub categoria",
     "subcat original", "sub cat original", "subcategoria", "sub cat"
 }
-NOVA_TARGETS = {
+NOVA_TARGETS = {"Nova_SubCat",
     "nova subcat", "nova subcategoria", "nova", "nova sub categoria", "nova sub cat"
 }
 
