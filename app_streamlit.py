@@ -4,6 +4,8 @@ import pandas as pd
 import streamlit as st
 from microcore.catalog_loader import load_mapping_xlsx
 from microcore.pipeline import process_dataframe
+from microcore.catalog_loader import load_mapping_gsheets, load_mapping_xlsx  # noqa: F811
+
 
 # ---------- Config da página ----------
 st.set_page_config(
@@ -87,36 +89,59 @@ with st.sidebar:
         "- Use um mapeamento enxuto para ver o semântico atuar."
     )
 
-# ---------- Etapa 1: Catálogo ----------
+# ---------- Etapa 1: Catálogo (Google Sheets OU arquivo local) ----------
 st.markdown("### 1) Catálogo (Mapeamento)")
+
 with st.container():
-    c1, c2 = st.columns([2, 3])
-    with c1:
-        map_file = st.file_uploader(
-            "Envie **Mapeamento_Subcategorias_V1.xlsx**",
-            type=["xlsx"], key="map", help="Colunas esperadas: 'SubCat Original' e 'Nova SubCat'."
-        )
-    with c2:
-        st.info(
-            "Este arquivo é a **fonte da verdade v1**. "
-            "Se a 'Nova SubCat' for **'Excluir'**, o registro sai do resultado final."
-        )
+    mode = st.radio(
+        "Fonte do catálogo:",
+        ["Google Sheets (recomendado)", "Arquivo local (.xlsx)"],
+        horizontal=True
+    )
 
-if not map_file:
-    st.stop()
+mapping_df = None
 
-# Carregar catálogo
-try:
-    mapping_df = load_mapping_xlsx(map_file)
-    with st.container():
-        st.success(f"Catálogo carregado: **{len(mapping_df)}** mapeamentos.")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.write("Amostra:")
+if mode == "Google Sheets (recomendado)":
+    gs_url = st.text_input(
+        "URL público da planilha do Google Sheets",
+        placeholder="https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0",
+        help="Compartilhe a planilha como 'Qualquer pessoa com o link: Leitor'."
+    )
+    tabs_default = ["Alimentação","Automotivo","Serviços","Decoração","Moda","Educação","Inst. Financeira","Saúde e Bem Estar","Outros"]
+    tabs_str = st.text_input(
+        "Nomes das abas (separados por vírgula)",
+        value=", ".join(tabs_default)
+    )
+
+    if gs_url and tabs_str.strip():
+        tabs = [t.strip() for t in tabs_str.split(",") if t.strip()]
+        try:
+            mapping_df = load_mapping_gsheets(gs_url, tabs)
+            st.success(f"Catálogo (GS) carregado: **{len(mapping_df)}** mapeamentos em {len(tabs)} abas.")
+            st.dataframe(mapping_df.head(15), use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro ao carregar Google Sheets: {e}")
+            st.stop()
+    else:
+        st.info("Informe a URL do Google Sheets e as abas.")
+        st.stop()
+
+else:
+    map_file = st.file_uploader(
+        "Envie **Mapeamento_Subcategorias_V1.xlsx**",
+        type=["xlsx"], key="map",
+        help="Colunas: 'SubCat Original' e 'Nova SubCat'."
+    )
+    if not map_file:
+        st.info("Envie o arquivo de mapeamento para continuar.")
+        st.stop()
+    try:
+        mapping_df = load_mapping_xlsx(map_file)
+        st.success(f"Catálogo (local) carregado: **{len(mapping_df)}** mapeamentos.")
         st.dataframe(mapping_df.head(15), use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-except Exception as e:
-    st.error(f"Erro ao carregar mapeamento: {e}")
-    st.stop()
+    except Exception as e:
+        st.error(f"Erro ao carregar mapeamento: {e}")
+        st.stop()
 
 # ---------- Etapa 2: Entrada ----------
 st.markdown("### 2) Arquivo de entrada")
