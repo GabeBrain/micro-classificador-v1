@@ -2,10 +2,10 @@ import io
 import time
 import pandas as pd
 import streamlit as st
+import altair as alt
 
 from microcore.pipeline import process_dataframe
-from microcore.catalog_loader import load_mapping_gsheets  
-
+from microcore.catalog_loader import load_mapping_gsheets
 
 
 # ---------- Config da página ----------
@@ -20,21 +20,21 @@ st.set_page_config(
 try:
     st.logo("assets/logoBrain.png")
 except Exception:
-    pass  # se não existir, ignora sem quebrar o app
+    pass  # ignora se não existir
 
-# ---------- Estilos custom (aproveita seu tema do config.toml) ----------
-PRIMARY = "#006400"  # mesmo do config.toml
+# ---------- Estilos custom ----------
+PRIMARY = "#006400"
 TEXT = "#31333F"
 
 st.markdown(
     f"""
     <style>
-        /* Títulos mais compactos */
+
         h1, h2, h3 {{
             color: {TEXT};
             letter-spacing: 0.2px;
         }}
-        /* Container "card" reutilizável */
+
         .card {{
             background: #FFFFFF;
             border: 1px solid rgba(0,0,0,0.06);
@@ -42,12 +42,12 @@ st.markdown(
             padding: 16px 18px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.04);
         }}
-        /* Tabela mais legível */
+
         .stDataFrame, .stTable {{
             border-radius: 12px !important;
             overflow: hidden !important;
         }}
-        /* Botão primário mais marcante */
+
         .stButton>button[kind="primary"] {{
             background: {PRIMARY} !important;
             color: white !important;
@@ -55,7 +55,7 @@ st.markdown(
             border-radius: 10px !important;
             font-weight: 600 !important;
         }}
-        /* Métricas “cardificadas” */
+
         div[data-testid="metric-container"] {{
             background: #FFFFFF;
             border: 1px solid rgba(0,0,0,0.06);
@@ -63,7 +63,7 @@ st.markdown(
             padding: 12px 12px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.04);
         }}
-        /* Sidebar com espaçamento */
+
         [data-testid="stSidebar"] {{
             padding-top: 10px;
         }}
@@ -91,13 +91,16 @@ with st.sidebar:
         "- Use um mapeamento enxuto para ver o semântico atuar."
     )
 
-# ---------- Etapa 1: Catálogo (Mapeamento via Google Sheets FIXO) ----------
+# ---------- Etapa 1: Catálogo (Google Sheets fixo) ----------
 st.markdown("### 1) Catálogo (Google Sheets fixo)")
-st.link_button("📄 Ver no Google Sheets", "https://docs.google.com/spreadsheets/d/1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE/edit?usp=sharing")
+st.link_button(
+    "📄 Ver no Google Sheets",
+    "https://docs.google.com/spreadsheets/d/1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE/edit?usp=sharing",
+)
 
 try:
     mapping_df = load_mapping_gsheets()
-    # ---- resumo geral ----
+    
     num_cats = mapping_df["categoria_oficial"].nunique()
     num_mapeamentos = len(mapping_df)
     num_subcats_orig = mapping_df["SubCat Original"].nunique()
@@ -110,7 +113,7 @@ try:
         f"({num_mapeamentos} mapeamentos totais)."
     )
 
-    # ---- tabela resumo por categoria ----
+    
     resumo = (
         mapping_df.groupby("categoria_oficial")
         .agg(
@@ -122,15 +125,14 @@ try:
         .reset_index()
     )
 
-
-    # ---- expanders por categoria ----
+    
     st.markdown("#### 🔍 Detalhamento por categoria")
     for cat in resumo["categoria_oficial"]:
         subset = mapping_df[mapping_df["categoria_oficial"] == cat].copy()
         total_mapeamentos = len(subset)
         total_novas = subset["Nova SubCat"].nunique()
         with st.expander(f"{cat} — {total_mapeamentos} mapeamentos, {total_novas} novas subcategorias"):
-            # agrupamento interno: Nova SubCat -> quantas originais apontam
+            
             sub_stats = (
                 subset.groupby("Nova SubCat")
                 .agg(Originais=("SubCat Original", "nunique"))
@@ -146,7 +148,8 @@ st.markdown("### 2) Arquivo de entrada")
 with st.container():
     data_file = st.file_uploader(
         "Envie o arquivo **XLSX** a ser processado",
-        type=["xlsx"], key="data",
+        type=["xlsx"],
+        key="data",
         help="Layout padrão com colunas como ID, Nome, Sub-Categoria, Categoria, Endereço, etc."
     )
 
@@ -160,8 +163,9 @@ st.write("Prévia (30 primeiras linhas):")
 st.dataframe(df_in.head(30), use_container_width=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------- Ação: Processar ----------
+# ---------- Etapa 3: Processar (com placeholder para evitar erro de sessão) ----------
 st.markdown("### 3) Processar")
+placeholder = st.empty()
 run_col, _ = st.columns([1, 3])
 with run_col:
     run = st.button("🚀 Processar agora", type="primary", use_container_width=True)
@@ -169,13 +173,19 @@ with run_col:
 if not run:
     st.stop()
 
-with st.spinner("Processando..."):
-    start = time.time()
-    df_final, baixa_conf, metrics, df_all = process_dataframe(
-        df_in, mapping_df, hi_threshold=hi, lo_threshold=lo)
-    elapsed = time.time() - start
+placeholder.info("⏳ Iniciando processamento...")
 
-st.success(f"Concluído em {elapsed:.2f}s")
+try:
+    with st.spinner("Processando arquivo... isso pode levar alguns segundos."):
+        start = time.time()
+        df_final, baixa_conf, metrics, df_all = process_dataframe(
+            df_in, mapping_df, hi_threshold=hi, lo_threshold=lo
+        )
+        elapsed = time.time() - start
+    placeholder.success(f"✅ Concluído em {elapsed:.2f}s")
+except Exception as e:
+    placeholder.error(f"❌ Erro durante o processamento: {e}")
+    st.stop()
 
 # ---------- Métricas ----------
 st.markdown("### 4) Métricas de execução")
@@ -190,59 +200,52 @@ m6.metric("Excluídos", metrics["excluidos"])
 # ---------- Painel geral de reclassificações ----------
 st.markdown("### 5) Resultados das reclassificações (antes × depois, com confiança)")
 
-# construir tabela unificada a partir de df_all (todas as linhas)
+
 panel = df_all.copy()
+panel = panel.rename(columns={"Categoria": "Cat Nova", "Sub-Categoria": "SubCat Nova"})
 
-# garantir colunas “bonitas”
-# Cat/SubCat novas já estão em 'Categoria' e 'Sub-Categoria'
-panel = panel.rename(columns={
-    "Categoria": "Cat Nova",
-    "Sub-Categoria": "SubCat Nova"
-})
 
-# ordenar por ação para leitura executiva
 if "acao" in panel.columns:
-    panel["acao"] = pd.Categorical(panel["acao"], ["Corrigir","Inferir","Manter","Excluir"], ordered=True)
-    panel = panel.sort_values(["acao","Cat Nova","SubCat Nova","Nome"], na_position="last")
+    panel["acao"] = pd.Categorical(
+        panel["acao"], ["Corrigir", "Inferir", "Manter", "Excluir"], ordered=True
+    )
+    panel = panel.sort_values(["acao", "Cat Nova", "SubCat Nova", "Nome"], na_position="last")
 
-cols_panel = [c for c in [
-    "ID","Nome",
-    "Cat Original","Cat Nova",
-    "SubCat Original","SubCat Nova",
-    "acao","fonte","confianca"
-] if c in panel.columns]
-
+cols_panel = [
+    c for c in [
+        "ID", "Nome",
+        "Cat Original", "Cat Nova",
+        "SubCat Original", "SubCat Nova",
+        "acao", "fonte", "confianca"
+    ] if c in panel.columns
+]
 st.dataframe(panel[cols_panel], use_container_width=True)
 
-# ---------- Análise descritiva por categoria/subcategoria ----------
+# ---------- Análise descritiva ----------
 st.markdown("### 6) Análise descritiva das subcategorias (sem 'Excluir')")
 
-if {"Cat Nova","SubCat Nova"}.issubset(panel.columns):
-    # filtrar registros finais (sem 'Excluir')
+if {"Cat Nova", "SubCat Nova"}.issubset(panel.columns):
     final_view = panel[~panel["SubCat Nova"].astype(str).str.strip().str.lower().eq("excluir")].copy()
-    final_view.rename(columns={"Cat Nova":"Categoria", "SubCat Nova":"Sub-Categoria"}, inplace=True)
+    final_view.rename(columns={"Cat Nova": "Categoria", "SubCat Nova": "Sub-Categoria"}, inplace=True)
 
-    if {"Categoria","Sub-Categoria"}.issubset(final_view.columns):
-        # contagem por par (Categoria, Sub-Categoria)
+    if {"Categoria", "Sub-Categoria"}.issubset(final_view.columns):
         counts = (
-            final_view
-            .groupby(["Categoria","Sub-Categoria"])
+            final_view.groupby(["Categoria", "Sub-Categoria"])
             .size()
             .reset_index(name="Qtd")
         )
-        # porcentagem dentro de cada categoria (EVITA reset_index em multiindex)
+        
         counts["Percentual"] = (
             counts["Qtd"] / counts.groupby("Categoria")["Qtd"].transform("sum") * 100
         ).round(2)
 
-        summary = counts[["Categoria","Sub-Categoria","Percentual"]]\
-                    .sort_values(["Categoria","Percentual"], ascending=[True, False])
+        summary = counts[["Categoria", "Sub-Categoria", "Percentual"]] \
+            .sort_values(["Categoria", "Percentual"], ascending=[True, False])
 
         st.caption("Participação (%) de cada Sub-Categoria dentro de sua Categoria (soma 100% por categoria).")
         st.dataframe(summary, use_container_width=True)
 
-        # (Opcional) gráfico visual
-        import altair as alt
+        
         st.markdown("#### 📊 Distribuição visual")
         chart = (
             alt.Chart(summary)
@@ -251,7 +254,7 @@ if {"Cat Nova","SubCat Nova"}.issubset(panel.columns):
                 y=alt.Y("Categoria:N", sort="-x", title="Categoria"),
                 x=alt.X("Percentual:Q", title="% na categoria"),
                 color=alt.Color("Sub-Categoria:N", legend=alt.Legend(title="Subcategoria")),
-                tooltip=["Categoria","Sub-Categoria","Percentual"]
+                tooltip=["Categoria", "Sub-Categoria", "Percentual"]
             )
             .properties(height=420)
         )
