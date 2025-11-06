@@ -14,6 +14,7 @@ st.set_page_config(
     page_title="Micro Classificador | MVP v1",
     page_icon="🧭"
 )
+st.experimental_rerun()
 
 # Logo (garante que assets/logoBrain.png exista)
 try:
