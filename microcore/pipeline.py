@@ -124,23 +124,37 @@ def process_dataframe(df_in: pd.DataFrame,
             ].head(1).values
 
             atual = str(df.at[i, "Sub-Categoria"]).strip().lower()
-            # 🎯 nova regra: reclassificar se divergir e tiver sim >= 0.70 (antes 0.85)
-            if len(human_pred) > 0:
-                nova_pred = str(human_pred[0]).strip().lower()
-                if nova_pred != atual and sim >= 0.70:
-                    df.at[i, "Sub-Categoria"] = human_pred[0]
-                    df.at[i, "acao"] = "Corrigir"
-                    df.at[i, "fonte"] = "semantico-validador"
-                    df.at[i, "confianca"] = round(float(sim), 4)
-                    # guard-rail de categoria (corrige conforme o catálogo)
-                    k_norm = norm_text(str(human_pred[0]))
-                    cat_oficial = mapping_df.loc[
-                        mapping_df["k_nova"] == k_norm, "categoria_oficial"
-                    ].head(1).values
-                    if len(cat_oficial) > 0:
-                        df.at[i, "Categoria"] = cat_oficial[0]
+            categoria_atual = atual
+            is_problematic = categoria_atual in ["cooperativa de crédito", "operadora de telefonia"]
 
-                        
+            if len(human_pred) > 0:
+                nova_pred = str(human_pred[0]).strip()
+                nova_pred_norm = nova_pred.lower()
+
+                # regra geral
+                #  - se divergir e sim >= 0.70 => Corrigir
+                #  - se for categoria problemática => Corrigir mesmo que sim >= 0.35
+                #  - se for problemática e sim < 0.35 => marcar para Verificar
+                if nova_pred_norm != categoria_atual:
+                    if sim >= 0.70 or (is_problematic and sim >= 0.35):
+                        df.at[i, "Sub-Categoria"] = nova_pred
+                        df.at[i, "acao"] = "Corrigir"
+                        df.at[i, "fonte"] = "semantico-validador"
+                        df.at[i, "confianca"] = round(float(sim), 4)
+                        # guard-rail de categoria
+                        k_norm = norm_text(nova_pred)
+                        cat_oficial = mapping_df.loc[
+                            mapping_df["k_nova"] == k_norm, "categoria_oficial"
+                        ].head(1).values
+                        if len(cat_oficial) > 0:
+                            df.at[i, "Categoria"] = cat_oficial[0]
+
+                    elif is_problematic and sim < 0.35:
+                        df.at[i, "acao"] = "Verificar"
+                        df.at[i, "fonte"] = "semantico-validador"
+                        df.at[i, "confianca"] = round(float(sim), 4)
+
+
     # 3) Semântico leve (TF-IDF) nos remanescentes
     pending = df["acao"].isna()
     pending_idx = df.index[pending].tolist()
