@@ -93,7 +93,7 @@ with st.sidebar:
 
 # ---------- Etapa 1: Catálogo (Mapeamento via Google Sheets FIXO) ----------
 st.markdown("### 1) Catálogo (Google Sheets fixo)")
-st.link_button("📄 Ver no Google Sheets", "1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE")
+st.link_button("📄 Ver no Google Sheets", "https://docs.google.com/spreadsheets/d/1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE/edit?usp=sharing")
 
 try:
     mapping_df = load_mapping_gsheets()
