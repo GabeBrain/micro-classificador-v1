@@ -23,7 +23,9 @@ def process_dataframe(df_in: pd.DataFrame,
                       mapping_df: pd.DataFrame,
                       hi_threshold: float = 0.90,
                       lo_threshold: float = 0.70,
-                      text_columns: Tuple[str,...] = ("Sub-Categoria","Nome","Endereço")) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
+                      text_columns: Tuple[str,...] = ("Sub-Categoria","Nome","Endereço"),
+                      progress_callback=None) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
+
     """
     mapping_df precisa conter:
       ['SubCat Original','Nova SubCat','categoria_oficial','k_original','k_nova','k_categoria']
@@ -33,6 +35,16 @@ def process_dataframe(df_in: pd.DataFrame,
     """
     df = df_in.copy()
 
+    # helper interno para atualizar a barra
+    def _update(frac, text):
+        if progress_callback:
+            try:
+                progress_callback(frac, text)
+            except Exception:
+                pass
+
+    _update(0.05, "Normalizando campos e preparando dados...")
+
     # colunas essenciais
     for col in ["Categoria","Sub-Categoria","Nome","Endereço"]:
         if col not in df.columns:
@@ -41,6 +53,8 @@ def process_dataframe(df_in: pd.DataFrame,
     # SALVAR ORIGINAIS para painel de reclassificação
     df["_Cat_Original"] = df["Categoria"].astype(str)
     df["_SubCat_Original"] = df["Sub-Categoria"].astype(str)
+
+    _update(0.10, "Criando dicionários e guard-rails...")
 
     # Dicionários rápidos para guard-rail
     #   k_nova -> (Nova SubCat bonitinha, categoria_oficial bonitinha)
@@ -55,6 +69,8 @@ def process_dataframe(df_in: pd.DataFrame,
         if cat_oficial:
             row["Categoria"] = cat_oficial
         return row
+    
+    _update(0.15, "Aplicando regras determinísticas (catálogo exato)...")
 
     # 1) determinístico exato pela Sub-Categoria original
     df["_k_subcat_in"] = df["Sub-Categoria"].astype(str).map(norm_text)
@@ -75,6 +91,8 @@ def process_dataframe(df_in: pd.DataFrame,
         for i in df.index[det_mask]:
             k_norm = norm_text(str(df.at[i, "Sub-Categoria"]))
             df.loc[i] = _apply_guard_rail(df.loc[i], k_norm)
+
+    _update(0.30, "Verificando matches 'contains' no catálogo...")
 
     # 2) determinístico contains (Nome/Endereço) para não mapeados
     not_mapped = df["acao"].isna()  # noqa: F841
@@ -102,6 +120,8 @@ def process_dataframe(df_in: pd.DataFrame,
         for i in df.index[cont_mask]:
             k_norm = norm_text(str(df.at[i, "Sub-Categoria"]))
             df.loc[i] = _apply_guard_rail(df.loc[i], k_norm)
+
+    _update(0.45, "Executando validador semântico...")
     
     # 2.1) Validador semântico universal (somente Nome como entrada)
     det_mask = df["fonte"].isin(["catalogo", "catalogo-contains"])
@@ -154,6 +174,7 @@ def process_dataframe(df_in: pd.DataFrame,
                         df.at[i, "fonte"] = "semantico-validador"
                         df.at[i, "confianca"] = round(float(sim), 4)
 
+    _update(0.70, "Rodando inferência semântica nos pendentes...")
 
     # 3) Semântico leve (TF-IDF) nos remanescentes
     pending = df["acao"].isna()
@@ -204,6 +225,7 @@ def process_dataframe(df_in: pd.DataFrame,
             df.at[i, "fonte"] = "nenhum"
             df.at[i, "confianca"] = round(float(sim), 4)
 
+    _update(0.90, "Finalizando e aplicando filtros de exclusão...")
 
     # 4) “Excluir” sai do final (mas conta nas métricas)
     excl_mask = df["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
@@ -261,4 +283,6 @@ def process_dataframe(df_in: pd.DataFrame,
     df_final = df_final.drop(columns=[c for c in drop_cols if c in df_final.columns], errors="ignore")
     df_excluidos = df_excluidos.drop(columns=[c for c in drop_cols if c in df_excluidos.columns], errors="ignore")
 
+    _update(1.0, "✅ Processamento concluído.")
+    
     return df_final, baixa_conf, metrics, df_all

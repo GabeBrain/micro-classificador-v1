@@ -172,13 +172,26 @@ if not run:
 placeholder.info("⏳ Iniciando processamento...")
 
 try:
-    with st.spinner("Processando arquivo... isso pode levar alguns segundos."):
-        start = time.time()
-        df_final, baixa_conf, metrics, df_all = process_dataframe(
-            df_in, mapping_df, hi_threshold=hi, lo_threshold=lo
-        )
-        elapsed = time.time() - start
-    placeholder.success(f"✅ Concluído em {elapsed:.2f}s")
+    progress = st.progress(0)
+    status = st.empty()
+
+    def progress_callback(fraction, text):
+        progress.progress(fraction)
+        status.info(text)
+
+    start = time.time()
+    df_final, baixa_conf, metrics, df_all = process_dataframe(
+        df_in,
+        mapping_df,
+        hi_threshold=hi,
+        lo_threshold=lo,
+        progress_callback=progress_callback
+    )
+    elapsed = time.time() - start
+
+    progress.empty()
+    status.success(f"✅ Concluído em {elapsed:.2f}s")
+
 except Exception as e:
     placeholder.error(f"❌ Erro durante o processamento: {e}")
     st.stop()
