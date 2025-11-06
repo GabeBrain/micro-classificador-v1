@@ -218,6 +218,16 @@ def process_dataframe(df_in: pd.DataFrame,
     # df_all = todas as linhas com ações (inclui Excluir)
     df_all = df.copy()
 
+    # --- garantir que SubCat_Intermediaria esteja presente no df_all ---
+    if "SubCat_Intermediaria" not in df_all.columns:
+        df_all["SubCat_Intermediaria"] = None
+
+    # se existirem exclusões, preenche também no df_all
+    if "Sub-Categoria" in df_all.columns and "SubCat Original" in df_all.columns:
+        excl_mask_all = df_all["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
+        df_all.loc[excl_mask_all, "SubCat_Intermediaria"] = df_all.loc[excl_mask_all, "SubCat Original"]
+
+
     # limpeza de colunas auxiliares (mas PRESERVAR _Cat_Original/_SubCat_Original)
     drop_cols = ["_k_subcat_in","k_original","k_nova","_nova_contains","categoria_oficial"]
     for _d in drop_cols:

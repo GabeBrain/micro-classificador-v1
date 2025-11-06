@@ -220,9 +220,9 @@ if "fonte" in panel.columns:
         st.markdown(f"#### 🔹 {fonte.upper()} ({len(subset)} registros)")
         if not subset.empty:
             df_show = subset.copy()
-            # limitar às colunas pedidas, preservando ordem
-            df_show = df_show[[c for c in cols_order if c in df_show.columns]]
-            st.dataframe(df_show, use_container_width=True)
+            # mostrar SubCat_Intermediaria se existir
+            cols_display = [c for c in cols_order if c in df_show.columns]
+            st.dataframe(df_show[cols_display], use_container_width=True)
         else:
             st.info(f"Sem registros para '{fonte}'.")
 
