@@ -120,9 +120,7 @@ try:
         .sort_index()
         .reset_index()
     )
-
-    st.markdown("#### 📊 Resumo por categoria")
-    st.dataframe(resumo, use_container_width=True)
+    
 
     # ---- expanders por categoria ----
     st.markdown("#### 🔍 Detalhamento por categoria")
