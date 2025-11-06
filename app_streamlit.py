@@ -6,9 +6,7 @@ import streamlit as st
 from microcore.pipeline import process_dataframe
 from microcore.catalog_loader import load_mapping_gsheets  
 
-# === Config do catálogo (URL fixa do Google Sheets) ===
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE/edit?usp=sharing"
-TABS_DEFAULT = ["Alimentação","Automotivo","Serviços","Decoração","Moda","Educação","Inst. Financeira","Saúde e Bem Estar","Outros"]
+
 
 # ---------- Config da página ----------
 st.set_page_config(
@@ -93,33 +91,14 @@ with st.sidebar:
     )
 
 # ---------- Etapa 1: Catálogo (Mapeamento via Google Sheets FIXO) ----------
-st.markdown("### 1) Catálogo (Mapeamento)")
-
-with st.container():
-    st.info(
-        "O catálogo é carregado **diretamente do Google Sheets** (URL fixa no código). "
-        "As **abas** definem a *categoria_oficial* de cada subcategoria e impõem os guard-rails."
-    )
-    # opção de editar as abas se quiser testar variações; pode fixar se preferir
-    tabs_str = st.text_input(
-        "Nomes das abas (separados por vírgula)",
-        value=", ".join(TABS_DEFAULT),
-        help="As abas devem corresponder exatamente às guias do arquivo do Google Sheets (acentos e espaços inclusos)."
-    )
-    reload_cat = st.button("🔄 Recarregar catálogo", use_container_width=False)
-
-# Carregar catálogo (sempre do Google Sheets)
-if tabs_str.strip():
-    tabs = [t.strip() for t in tabs_str.split(",") if t.strip()]
-else:
-    tabs = TABS_DEFAULT
+st.markdown("### 1) Catálogo (Google Sheets fixo)")
 
 try:
-    mapping_df = load_mapping_gsheets(SHEET_URL, tabs)
-    st.success(f"Catálogo (Google Sheets) carregado: **{len(mapping_df)}** mapeamentos em {len(tabs)} abas.")
-    st.dataframe(mapping_df.head(15), use_container_width=True)
+    mapping_df = load_mapping_gsheets()
+    st.success(f"Catálogo carregado: {len(mapping_df)} mapeamentos em {mapping_df['categoria_oficial'].nunique()} abas.")
+    st.dataframe(mapping_df.head(20), use_container_width=True)
 except Exception as e:
-    st.error(f"Erro ao carregar Google Sheets: {e}")
+    st.error(f"Erro ao carregar catálogo do Google Sheets: {e}")
     st.stop()
 
 # ---------- Etapa 2: Entrada ----------
