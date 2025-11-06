@@ -7,7 +7,7 @@ from microcore.pipeline import process_dataframe
 from microcore.catalog_loader import load_mapping_gsheets, load_mapping_xlsx  # noqa: F811
 
 # === Config do catálogo (URL fixa do Google Sheets) ===
-SHEET_URL = "https://docs.google.com/spreadsheets/d/<SEU_ID>/edit#gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE/edit?usp=sharing"
 TABS_DEFAULT = ["Alimentação","Automotivo","Serviços","Decoração","Moda","Educação","Inst. Financeira","Saúde e Bem Estar","Outros"]
 
 # ---------- Config da página ----------
