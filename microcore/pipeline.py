@@ -207,6 +207,11 @@ def process_dataframe(df_in: pd.DataFrame,
 
     # 4) “Excluir” sai do final (mas conta nas métricas)
     excl_mask = df["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
+
+    # registra subcategoria intermediária antes de virar "Excluir"
+    df.loc[excl_mask, "SubCat_Intermediaria"] = df.loc[excl_mask, "SubCat Original"]
+
+    # mantém cópias separadas
     df_excluidos = df[excl_mask].copy()
     df_final = df[~excl_mask].copy()
 

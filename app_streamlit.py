@@ -189,7 +189,7 @@ m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Total (inclui 'Excluir')", metrics["total"])
 m2.metric("Catálogo (exato)", metrics["catalogo"])
 m3.metric("Catálogo (contains)", metrics["catalogo_contains"])
-m4.metric("Inferidos (semântico)", metrics["inferido"])
+m4.metric("Validador semântico", (df_all["fonte"] == "semantico-validador").sum())
 m5.metric("Mantidos", metrics["manter"])
 m6.metric("Excluídos", metrics["excluidos"])
 
@@ -198,35 +198,47 @@ st.markdown("### 5) Resultados das reclassificações (antes × depois, com conf
 
 
 panel = df_all.copy()
-panel = panel.rename(columns={"Categoria": "Cat Nova", "Sub-Categoria": "SubCat Nova"})
 
+# renomear colunas pra manter padrão
+panel = panel.rename(columns={
+    "Categoria": "Cat Nova",
+    "Sub-Categoria": "SubCat Nova"
+})
 
-if "acao" in panel.columns:
-    panel["acao"] = pd.Categorical(
-        panel["acao"], ["Corrigir", "Inferir", "Manter", "Excluir"], ordered=True
-    )
-    panel = panel.sort_values(["acao", "Cat Nova", "SubCat Nova", "Nome"], na_position="last")
-
-cols_panel = [
-    c for c in [
-        "ID", "Nome",
-        "Cat Original", "Cat Nova",
-        "SubCat Original", "SubCat Nova",
-        "acao", "fonte", "confianca"
-    ] if c in panel.columns
+cols_order = [
+    "Nome",
+    "SubCat Original", "SubCat Intermediaria", "SubCat Nova",
+    "Cat Original", "Cat Nova",
+    "acao", "confianca", "fonte"
 ]
-st.dataframe(panel[cols_panel], use_container_width=True)
 
-# ---------- Análise descritiva ----------
+# organizar fonte para ordenação visual
+if "fonte" in panel.columns:
+    fontes = panel["fonte"].dropna().unique().tolist()
+    for fonte in fontes:
+        subset = panel[panel["fonte"] == fonte].copy()
+        st.markdown(f"#### 🔹 {fonte.upper()} ({len(subset)} registros)")
+        if not subset.empty:
+            df_show = subset.copy()
+            # limitar às colunas pedidas, preservando ordem
+            df_show = df_show[[c for c in cols_order if c in df_show.columns]]
+            st.dataframe(df_show, use_container_width=True)
+        else:
+            st.info(f"Sem registros para '{fonte}'.")
+
+# ---------- Análise descritiva das subcategorias ----------
 st.markdown("### 6) Análise descritiva das subcategorias (sem 'Excluir')")
 
-if {"Cat Nova", "SubCat Nova"}.issubset(panel.columns):
-    final_view = panel[~panel["SubCat Nova"].astype(str).str.strip().str.lower().eq("excluir")].copy()
-    final_view.rename(columns={"Cat Nova": "Categoria", "SubCat Nova": "Sub-Categoria"}, inplace=True)
+if {"Cat Nova","SubCat Nova"}.issubset(panel.columns):
+    final_view = panel[
+        ~panel["SubCat Nova"].astype(str).str.strip().str.lower().eq("excluir")
+    ].copy()
+    final_view.rename(columns={"Cat Nova":"Categoria", "SubCat Nova":"Sub-Categoria"}, inplace=True)
 
-    if {"Categoria", "Sub-Categoria"}.issubset(final_view.columns):
+    if {"Categoria","Sub-Categoria"}.issubset(final_view.columns):
         counts = (
-            final_view.groupby(["Categoria", "Sub-Categoria"])
+            final_view
+            .groupby(["Categoria","Sub-Categoria"])
             .size()
             .reset_index(name="Qtd")
         )
@@ -235,26 +247,22 @@ if {"Cat Nova", "SubCat Nova"}.issubset(panel.columns):
             counts["Qtd"] / counts.groupby("Categoria")["Qtd"].transform("sum") * 100
         ).round(2)
 
-        summary = counts[["Categoria", "Sub-Categoria", "Percentual"]] \
-            .sort_values(["Categoria", "Percentual"], ascending=[True, False])
+        st.caption("Distribuição (%) de subcategorias dentro de cada categoria:")
 
-        st.caption("Participação (%) de cada Sub-Categoria dentro de sua Categoria (soma 100% por categoria).")
-        st.dataframe(summary, use_container_width=True)
-
-        
-        st.markdown("#### 📊 Distribuição visual")
-        chart = (
-            alt.Chart(summary)
-            .mark_bar()
-            .encode(
-                y=alt.Y("Categoria:N", sort="-x", title="Categoria"),
-                x=alt.X("Percentual:Q", title="% na categoria"),
-                color=alt.Color("Sub-Categoria:N", legend=alt.Legend(title="Subcategoria")),
-                tooltip=["Categoria", "Sub-Categoria", "Percentual"]
-            )
-            .properties(height=420)
-        )
-        st.altair_chart(chart, use_container_width=True)
+        for cat in sorted(counts["Categoria"].unique()):
+            subset = counts[counts["Categoria"] == cat].sort_values("Percentual", ascending=True)
+            with st.expander(f"{cat} ({len(subset)} subcategorias)"):
+                chart = (
+                    alt.Chart(subset)
+                    .mark_bar()
+                    .encode(
+                        x=alt.X("Percentual:Q", title="% dentro da categoria"),
+                        y=alt.Y("Sub-Categoria:N", sort="-x", title="Subcategoria"),
+                        tooltip=["Sub-Categoria","Percentual"]
+                    )
+                    .properties(height=max(300, 25 * len(subset)))
+                )
+                st.altair_chart(chart, use_container_width=True)
     else:
         st.warning("Colunas 'Categoria' e 'Sub-Categoria' não encontradas no resultado final.")
 else:
