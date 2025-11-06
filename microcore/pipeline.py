@@ -150,7 +150,17 @@ def process_dataframe(df_in: pd.DataFrame,
     vec, X = _build_tfidf_index(target_terms_norm)
 
     for i in pending_idx:
-        bag = " ".join(str(df.at[i, c]) for c in text_columns)
+        nome = str(df.at[i, "Nome"])
+        endereco = str(df.at[i, "Endereço"])
+        categoria = str(df.at[i, "Categoria"])
+        subcat_original = str(df.at[i, "Sub-Categoria"]).strip()
+
+        # 🧠 se subcategoria estiver vazia, dá mais peso ao nome
+        if subcat_original in ["", "nan", "None"]:
+            bag = f"{nome} {nome} {endereco} {categoria}"  # nome x2
+        else:
+            bag = f"{nome} {endereco} {categoria}"
+
         q = norm_text(bag)
         if not q:
             df.at[i, "acao"] = "Manter"
@@ -160,18 +170,25 @@ def process_dataframe(df_in: pd.DataFrame,
 
         pred_norm, sim = _semantic_match(q, vec, X, target_terms_norm)
         if sim >= lo_threshold:
-            # “forma bonita”
-            human_pred = subcat_norm_to_pretty.get(pred_norm, pred_norm)
-            df.at[i, "Sub-Categoria"] = human_pred
-            df.at[i, "acao"] = "Inferir"
-            df.at[i, "fonte"] = "semantico"
-            df.at[i, "confianca"] = round(float(sim), 4)
-            # guard-rail
-            df.loc[i] = _apply_guard_rail(df.loc[i], pred_norm)
+            human_pred = mapping_df.loc[
+                mapping_df["k_nova"] == pred_norm, "Nova SubCat"
+            ].head(1).values
+            if len(human_pred) > 0:
+                df.at[i, "Sub-Categoria"] = human_pred[0]
+                df.at[i, "acao"] = "Inferir"
+                df.at[i, "fonte"] = "semantico"
+                df.at[i, "confianca"] = round(float(sim), 4)
+                # guard-rail
+                cat_oficial = mapping_df.loc[
+                    mapping_df["k_nova"] == pred_norm, "categoria_oficial"
+                ].head(1).values
+                if len(cat_oficial) > 0:
+                    df.at[i, "Categoria"] = cat_oficial[0]
         else:
             df.at[i, "acao"] = "Manter"
             df.at[i, "fonte"] = "nenhum"
             df.at[i, "confianca"] = round(float(sim), 4)
+
 
     # 4) “Excluir” sai do final (mas conta nas métricas)
     excl_mask = df["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
