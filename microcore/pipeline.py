@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from rapidfuzz import fuzz
+
 from .utils import norm_text
 
 def _build_tfidf_index(target_terms: list[str]):
@@ -102,6 +102,37 @@ def process_dataframe(df_in: pd.DataFrame,
         for i in df.index[cont_mask]:
             k_norm = norm_text(str(df.at[i, "Sub-Categoria"]))
             df.loc[i] = _apply_guard_rail(df.loc[i], k_norm)
+    
+    # 2.1) Validador semântico de exclusões (opção A)
+    excl_mask = df["acao"].isin(["Corrigir"]) & df["Sub-Categoria"].astype(str).str.lower().eq("excluir")
+    idx_excl = df.index[excl_mask].tolist()
+    if len(idx_excl) > 0:
+        # prepara universo semântico (todas as "Nova SubCat" válidas)
+        target_terms_pretty = mapping_df["Nova SubCat"].astype(str).dropna().unique().tolist()
+        target_terms_norm = [norm_text(t) for t in target_terms_pretty]
+        vec_veto, X_veto = _build_tfidf_index(target_terms_norm)
+
+        for i in idx_excl:
+            bag = " ".join(str(df.at[i, c]) for c in text_columns)
+            q = norm_text(bag)
+            if not q:
+                continue
+            pred_norm, sim = _semantic_match(q, vec_veto, X_veto, target_terms_norm)
+            human_pred = mapping_df.loc[
+                mapping_df["k_nova"] == pred_norm, "Nova SubCat"
+            ].head(1).values
+            if sim >= 0.80 and len(human_pred) > 0 and human_pred[0].strip().lower() != "excluir":
+                df.at[i, "Sub-Categoria"] = human_pred[0]
+                df.at[i, "acao"] = "Corrigir"
+                df.at[i, "fonte"] = "semantico-validador"
+                df.at[i, "confianca"] = round(float(sim), 4)
+                # guard-rail de categoria
+                k_norm = norm_text(str(human_pred[0]))
+                cat_oficial = mapping_df.loc[
+                    mapping_df["k_nova"] == k_norm, "categoria_oficial"
+                ].head(1).values
+                if len(cat_oficial) > 0:
+                    df.at[i, "Categoria"] = cat_oficial[0]
 
     # 3) Semântico leve (TF-IDF) nos remanescentes
     pending = df["acao"].isna()
