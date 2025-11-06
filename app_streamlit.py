@@ -93,6 +93,7 @@ with st.sidebar:
 
 # ---------- Etapa 1: Catálogo (Mapeamento via Google Sheets FIXO) ----------
 st.markdown("### 1) Catálogo (Google Sheets fixo)")
+st.link_button("📄 Ver no Google Sheets", "1egrGImJrXqfvxa7U4QirKrePE7w8QtuOG8Jc_H_AsJE")
 
 try:
     mapping_df = load_mapping_gsheets()
@@ -120,7 +121,7 @@ try:
         .sort_index()
         .reset_index()
     )
-    
+
 
     # ---- expanders por categoria ----
     st.markdown("#### 🔍 Detalhamento por categoria")
