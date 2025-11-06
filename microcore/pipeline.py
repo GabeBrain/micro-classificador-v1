@@ -231,7 +231,7 @@ def process_dataframe(df_in: pd.DataFrame,
     excl_mask = df["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
 
     # registra subcategoria intermediária antes de virar "Excluir"
-    df.loc[excl_mask, "SubCat_Intermediaria"] = df.loc[excl_mask, "SubCat Original"]
+    df.loc[excl_mask, "SubCat_Intermediaria"] = df.loc[excl_mask, "_SubCat_Original"]
 
     # mantém cópias separadas
     df_excluidos = df[excl_mask].copy()
@@ -245,9 +245,9 @@ def process_dataframe(df_in: pd.DataFrame,
         df_all["SubCat_Intermediaria"] = None
 
     # se existirem exclusões, preenche também no df_all
-    if "Sub-Categoria" in df_all.columns and "SubCat Original" in df_all.columns:
+    if "Sub-Categoria" in df_all.columns and "_SubCat_Original" in df_all.columns:
         excl_mask_all = df_all["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
-        df_all.loc[excl_mask_all, "SubCat_Intermediaria"] = df_all.loc[excl_mask_all, "SubCat Original"]
+        df_all.loc[excl_mask_all, "SubCat_Intermediaria"] = df_all.loc[excl_mask_all, "_SubCat_Original"]
 
 
     # limpeza de colunas auxiliares (mas PRESERVAR _Cat_Original/_SubCat_Original)
