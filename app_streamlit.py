@@ -170,9 +170,8 @@ if not run:
 
 with st.spinner("Processando..."):
     start = time.time()
-    df_final, baixa_conf, metrics = process_dataframe(
-        df_in, mapping_df, hi_threshold=hi, lo_threshold=lo
-    )
+    df_final, baixa_conf, metrics, df_all = process_dataframe(
+        df_in, mapping_df, hi_threshold=hi, lo_threshold=lo)
     elapsed = time.time() - start
 
 st.success(f"Concluído em {elapsed:.2f}s")
@@ -188,98 +187,79 @@ m5.metric("Mantidos", metrics["manter"])
 m6.metric("Excluídos", metrics["excluidos"])
 
 # ---------- Painel geral de reclassificações ----------
-st.markdown("### 5) Resultados das reclassificações")
+st.markdown("### 5) Resultados das reclassificações (antes × depois, com confiança)")
 
-# precisamos do df_original (com todas as linhas, inclusive Excluir)
-# pipeline.py já produz df_final (sem Excluir) — então refaça um merge leve pra mostrar os antes/depois
-# Como df_in e df_final não têm a mesma ordem, usamos ID se existir.
-cols_possible = ["ID","Nome","Categoria","Sub-Categoria","acao","fonte","confianca"]
-df_out = df_in.copy()
+# construir tabela unificada a partir de df_all (todas as linhas)
+panel = df_all.copy()
 
-# se pipeline incluiu 'acao' etc., ótimo; senão, mergeia:
-if "acao" not in df_out.columns and "acao" in df_final.columns:
-    # tentativa de merge simples por ID se existir
-    if "ID" in df_out.columns and "ID" in df_final.columns:
-        df_out = df_out.merge(
-            df_final[["ID","Sub-Categoria","Categoria","acao","fonte","confianca"]],
-            on="ID", how="left", suffixes=("_original","_novo")
-        )
-    else:
-        # fallback por índice
-        df_out = df_out.join(
-            df_final[["Sub-Categoria","Categoria","acao","fonte","confianca"]],
-            how="left", rsuffix="_novo"
-        )
-else:
-    # já vem completo
-    df_out = df_final.copy()
+# garantir colunas “bonitas”
+# Cat/SubCat novas já estão em 'Categoria' e 'Sub-Categoria'
+panel = panel.rename(columns={
+    "Categoria": "Cat Nova",
+    "Sub-Categoria": "SubCat Nova"
+})
 
-# renomear colunas pro painel
-rename_map = {
-    "Sub-Categoria_original": "SubCat Original",
-    "Sub-Categoria_novo": "SubCat Nova",
-    "Categoria_original": "Cat Original",
-    "Categoria_novo": "Cat Nova",
-}
-df_out = df_out.rename(columns=rename_map)
+# ordenar por ação para leitura executiva
+if "acao" in panel.columns:
+    panel["acao"] = pd.Categorical(panel["acao"], ["Corrigir","Inferir","Manter","Excluir"], ordered=True)
+    panel = panel.sort_values(["acao","Cat Nova","SubCat Nova","Nome"], na_position="last")
 
-# selecionar colunas finais
-cols_show = [
-    c for c in [
-        "ID","Nome",
-        "Cat Original","Cat Nova",
-        "SubCat Original","SubCat Nova",
-        "acao","fonte","confianca"
-    ] if c in df_out.columns
-]
+cols_panel = [c for c in [
+    "ID","Nome",
+    "Cat Original","Cat Nova",
+    "SubCat Original","SubCat Nova",
+    "acao","fonte","confianca"
+] if c in panel.columns]
 
-# ordena por tipo de ação para facilitar visualização
-if "acao" in df_out.columns:
-    df_out["acao"] = pd.Categorical(
-        df_out["acao"],
-        categories=["Corrigir","Inferir","Manter","Excluir"],
-        ordered=True
-    )
-    df_out = df_out.sort_values("acao")
-
-st.dataframe(df_out[cols_show], use_container_width=True)
-
+st.dataframe(panel[cols_panel], use_container_width=True)
 
 # ---------- Análise descritiva por categoria/subcategoria ----------
 st.markdown("### 6) Análise descritiva das subcategorias (sem 'Excluir')")
 
-# garantir que temos as colunas certas
-if not {"Categoria","Sub-Categoria"}.issubset(df_final.columns):
-    st.warning("Colunas 'Categoria' e 'Sub-Categoria' não encontradas no resultado final.")
-else:
-    # calcula percentual por categoria
-    summary = (
-        df_final.groupby(["Categoria","Sub-Categoria"])
-        .size()
-        .groupby(level=0)
-        .apply(lambda x: 100 * x / float(x.sum()))
-        .reset_index(name="Percentual")
-    )
-    summary["Percentual"] = summary["Percentual"].round(2)
+if {"Cat Nova","SubCat Nova"}.issubset(panel.columns):
+    # filtrar registros finais (sem 'Excluir')
+    final_view = panel[~panel["SubCat Nova"].astype(str).str.strip().str.lower().eq("excluir")].copy()
+    final_view.rename(columns={"Cat Nova":"Categoria", "SubCat Nova":"Sub-Categoria"}, inplace=True)
 
-    st.caption("Distribuição percentual de registros por categoria e subcategoria")
-    st.dataframe(summary, use_container_width=True)
-
-    # se quiser algo mais visual, dá pra incluir um gráfico de barras horizontal:
-    import altair as alt
-    st.markdown("#### 📊 Distribuição visual")
-    chart = (
-        alt.Chart(summary)
-        .mark_bar()
-        .encode(
-            y=alt.Y("Categoria:N", sort="-x", title="Categoria"),
-            x=alt.X("Percentual:Q", title="% de registros"),
-            color=alt.Color("Sub-Categoria:N", legend=alt.Legend(title="Subcategoria")),
-            tooltip=["Categoria","Sub-Categoria","Percentual"]
+    if {"Categoria","Sub-Categoria"}.issubset(final_view.columns):
+        # contagem por par (Categoria, Sub-Categoria)
+        counts = (
+            final_view
+            .groupby(["Categoria","Sub-Categoria"])
+            .size()
+            .reset_index(name="Qtd")
         )
-        .properties(height=400)
-    )
-    st.altair_chart(chart, use_container_width=True)
+        # porcentagem dentro de cada categoria (EVITA reset_index em multiindex)
+        counts["Percentual"] = (
+            counts["Qtd"] / counts.groupby("Categoria")["Qtd"].transform("sum") * 100
+        ).round(2)
+
+        summary = counts[["Categoria","Sub-Categoria","Percentual"]]\
+                    .sort_values(["Categoria","Percentual"], ascending=[True, False])
+
+        st.caption("Participação (%) de cada Sub-Categoria dentro de sua Categoria (soma 100% por categoria).")
+        st.dataframe(summary, use_container_width=True)
+
+        # (Opcional) gráfico visual
+        import altair as alt
+        st.markdown("#### 📊 Distribuição visual")
+        chart = (
+            alt.Chart(summary)
+            .mark_bar()
+            .encode(
+                y=alt.Y("Categoria:N", sort="-x", title="Categoria"),
+                x=alt.X("Percentual:Q", title="% na categoria"),
+                color=alt.Color("Sub-Categoria:N", legend=alt.Legend(title="Subcategoria")),
+                tooltip=["Categoria","Sub-Categoria","Percentual"]
+            )
+            .properties(height=420)
+        )
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.warning("Colunas 'Categoria' e 'Sub-Categoria' não encontradas no resultado final.")
+else:
+    st.warning("Painel não possui colunas 'Cat Nova' / 'SubCat Nova'.")
+
 
 
 # ---------- Download ----------

@@ -32,10 +32,15 @@ def process_dataframe(df_in: pd.DataFrame,
       - Sub-Categoria -> Categoria sempre ajustada para a 'categoria_oficial' do mapeamento
     """
     df = df_in.copy()
-    
+
+    # colunas essenciais
     for col in ["Categoria","Sub-Categoria","Nome","Endereço"]:
         if col not in df.columns:
             df[col] = ""
+
+    # SALVAR ORIGINAIS para painel de reclassificação
+    df["_Cat_Original"] = df["Categoria"].astype(str)
+    df["_SubCat_Original"] = df["Sub-Categoria"].astype(str)
 
     # Dicionários rápidos para guard-rail
     #   k_nova -> (Nova SubCat bonitinha, categoria_oficial bonitinha)
@@ -136,6 +141,21 @@ def process_dataframe(df_in: pd.DataFrame,
     df_excluidos = df[excl_mask].copy()
     df_final = df[~excl_mask].copy()
 
+    # df_all = todas as linhas com ações (inclui Excluir)
+    df_all = df.copy()
+
+    # limpeza de colunas auxiliares (mas PRESERVAR _Cat_Original/_SubCat_Original)
+    drop_cols = ["_k_subcat_in","k_original","k_nova","_nova_contains","categoria_oficial"]
+    for _d in drop_cols:
+        for _tgt in (df_final, df_excluidos, df_all):
+            if _d in _tgt.columns:
+                _tgt.drop(columns=[_d], inplace=True)
+
+    # renomear originais para nomes “bonitos”
+    for _tgt in (df_final, df_excluidos, df_all):
+        if "_Cat_Original" in _tgt.columns:
+            _tgt.rename(columns={"_Cat_Original":"Cat Original","_SubCat_Original":"SubCat Original"}, inplace=True)
+
     # Métricas
     metrics = {
         "total": int(len(df)),
@@ -157,4 +177,4 @@ def process_dataframe(df_in: pd.DataFrame,
     df_final = df_final.drop(columns=[c for c in drop_cols if c in df_final.columns], errors="ignore")
     df_excluidos = df_excluidos.drop(columns=[c for c in drop_cols if c in df_excluidos.columns], errors="ignore")
 
-    return df_final, baixa_conf, metrics
+    return df_final, baixa_conf, metrics, df_all
