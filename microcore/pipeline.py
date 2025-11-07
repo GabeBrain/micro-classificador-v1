@@ -100,7 +100,7 @@ def process_dataframe(df_in: pd.DataFrame,
 
     def _contains_rule(row):
         if pd.isna(row.get("acao")):
-            hay = " ".join(str(row.get(c, "")) for c in ("Nome","Endereço"))
+            hay = " ".join(str(row.get(c, "")) for c in ("Nome"))
             hay_n = norm_text(hay)
             for k_orig, nova in contains_pairs:
                 if k_orig and k_orig in hay_n:
