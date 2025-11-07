@@ -60,6 +60,8 @@ def process_dataframe(df_in: pd.DataFrame,
     #   k_nova -> (Nova SubCat bonitinha, categoria_oficial bonitinha)
     subcat_norm_to_pretty = dict(mapping_df[["k_nova","Nova SubCat"]].drop_duplicates().values)
     subcat_norm_to_cat    = dict(mapping_df[["k_nova","categoria_oficial"]].drop_duplicates().values)
+    orig_norm_to_new      = dict(mapping_df[["k_original","Nova SubCat"]].drop_duplicates().values)
+    orig_norm_to_k_nova   = dict(mapping_df[["k_original","k_nova"]].drop_duplicates().values)
 
     def _apply_guard_rail(row, k_nova_norm: str):
         # Ajusta Categoria de acordo com a categoria_oficial da subcategoria
@@ -128,7 +130,7 @@ def process_dataframe(df_in: pd.DataFrame,
     idx_det = df.index[det_mask].tolist()
 
     if len(idx_det) > 0:
-        target_terms_pretty = mapping_df["Nova SubCat"].astype(str).dropna().unique().tolist()
+        target_terms_pretty = mapping_df["SubCat Original"].astype(str).dropna().unique().tolist()
         target_terms_norm = [norm_text(t) for t in target_terms_pretty]
         vec_val, X_val = _build_tfidf_index(target_terms_norm)
 
@@ -139,40 +141,37 @@ def process_dataframe(df_in: pd.DataFrame,
 
             q = norm_text(nome)
             pred_norm, sim = _semantic_match(q, vec_val, X_val, target_terms_norm)
-            human_pred = mapping_df.loc[
-                mapping_df["k_nova"] == pred_norm, "Nova SubCat"
-            ].head(1).values
+            nova_pred = orig_norm_to_new.get(pred_norm)
+            if not nova_pred:
+                continue
 
             atual = str(df.at[i, "Sub-Categoria"]).strip().lower()
             categoria_atual = atual
             is_problematic = categoria_atual in ["cooperativa de crédito", "operadora de telefonia"]
 
-            if len(human_pred) > 0:
-                nova_pred = str(human_pred[0]).strip()
-                nova_pred_norm = nova_pred.lower()
+            nova_pred = str(nova_pred).strip()
+            nova_pred_norm = nova_pred.lower()
 
-                # regra geral
-                #  - se divergir e sim >= 0.70 => Corrigir
-                #  - se for categoria problemática => Corrigir mesmo que sim >= 0.35
-                #  - se for problemática e sim < 0.35 => marcar para Verificar
-                if nova_pred_norm != categoria_atual:
-                    if sim >= 0.70 or (is_problematic and sim >= 0.35):
-                        df.at[i, "Sub-Categoria"] = nova_pred
-                        df.at[i, "acao"] = "Corrigir"
-                        df.at[i, "fonte"] = "semantico-validador"
-                        df.at[i, "confianca"] = round(float(sim), 4)
-                        # guard-rail de categoria
-                        k_norm = norm_text(nova_pred)
-                        cat_oficial = mapping_df.loc[
-                            mapping_df["k_nova"] == k_norm, "categoria_oficial"
-                        ].head(1).values
-                        if len(cat_oficial) > 0:
-                            df.at[i, "Categoria"] = cat_oficial[0]
+            # regra geral
+            #  - se divergir e sim >= 0.70 => Corrigir
+            #  - se for categoria problemática => Corrigir mesmo que sim >= 0.35
+            #  - se for problemática e sim < 0.35 => marcar para Verificar
+            if nova_pred_norm != categoria_atual:
+                if sim >= 0.70 or (is_problematic and sim >= 0.35):
+                    df.at[i, "Sub-Categoria"] = nova_pred
+                    df.at[i, "acao"] = "Corrigir"
+                    df.at[i, "fonte"] = "semantico-validador"
+                    df.at[i, "confianca"] = round(float(sim), 4)
+                    # guard-rail de categoria
+                    k_norm = orig_norm_to_k_nova.get(pred_norm) or norm_text(nova_pred)
+                    cat_oficial = subcat_norm_to_cat.get(k_norm)
+                    if cat_oficial:
+                        df.at[i, "Categoria"] = cat_oficial
 
-                    elif is_problematic and sim < 0.35:
-                        df.at[i, "acao"] = "Verificar"
-                        df.at[i, "fonte"] = "semantico-validador"
-                        df.at[i, "confianca"] = round(float(sim), 4)
+                elif is_problematic and sim < 0.35:
+                    df.at[i, "acao"] = "Verificar"
+                    df.at[i, "fonte"] = "semantico-validador"
+                    df.at[i, "confianca"] = round(float(sim), 4)
 
     _update(0.70, "Rodando inferência semântica nos pendentes...")
 
