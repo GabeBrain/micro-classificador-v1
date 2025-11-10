@@ -26,6 +26,20 @@ except Exception:
 PRIMARY = "#006400"
 TEXT = "#31333F"
 
+CATEGORY_ICONS = {
+    "Alimentação": "🍽️",
+    "Beleza": "💄",
+    "Saúde": "🩺",
+    "Serviços": "🛠️",
+    "Moda": "👗",
+    "Tecnologia": "💻",
+    "Lazer": "🎯",
+    "Financeiro": "💰",
+    "Casa": "🏠",
+    "Automotivo": "🚗",
+}
+DEFAULT_CATEGORY_ICON = "📊"
+
 st.markdown(
     f"""
     <style>
@@ -122,19 +136,31 @@ try:
     )
 
     
-    st.markdown("#### 🔍 Detalhamento por categoria")
+    st.markdown("#### 📊 Detalhamento por categoria")
+    category_cards = []
     for cat in resumo["categoria_oficial"]:
         subset = mapping_df[mapping_df["categoria_oficial"] == cat].copy()
         total_mapeamentos = len(subset)
         total_novas = subset["Nova SubCat"].nunique()
-        with st.expander(f"{cat} — {total_mapeamentos} mapeamentos, {total_novas} novas subcategorias"):
-            
-            sub_stats = (
-                subset.groupby("Nova SubCat")
-                .agg(Originais=("SubCat Original", "nunique"))
-                .sort_values("Originais", ascending=False)
-            )
-            st.dataframe(sub_stats, use_container_width=True)
+        category_cards.append((cat, subset, total_mapeamentos, total_novas))
+
+    cols_per_row = 3
+    for idx in range(0, len(category_cards), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for col, card in zip(cols, category_cards[idx:idx + cols_per_row]):
+            cat, subset, total_mapeamentos, total_novas = card
+            icon = CATEGORY_ICONS.get(cat, DEFAULT_CATEGORY_ICON)
+            label = f"{icon} {cat} — {total_mapeamentos} mapeamentos, {total_novas} novas subcategorias"
+            with col:
+                with st.expander(label):
+                    sub_stats = (
+                        subset.groupby("Nova SubCat")
+                        .agg(Originais=("SubCat Original", "nunique"))
+                        .sort_values("Originais", ascending=False)
+                    )
+                    st.dataframe(sub_stats, use_container_width=True)
+
+
 except Exception as e:
     st.error(f"Erro ao carregar catálogo do Google Sheets: {e}")
     st.stop()
