@@ -30,7 +30,7 @@ def process_dataframe(df_in: pd.DataFrame,
     mapping_df precisa conter:
       ['SubCat Original','Nova SubCat','categoria_oficial','k_original','k_nova','k_categoria']
     Guard-rails:
-      - 'Excluir' remove do resultado final
+      - 'Excluir' permanece no resultado final porém sinalizado para revisão manual
       - Sub-Categoria -> Categoria sempre ajustada para a 'categoria_oficial' do mapeamento
     """
     df = df_in.copy()
@@ -226,15 +226,15 @@ def process_dataframe(df_in: pd.DataFrame,
 
     _update(0.90, "Finalizando e aplicando filtros de exclusão...")
 
-    # 4) “Excluir” sai do final (mas conta nas métricas)
+    # 4) “Excluir” permanece no dataset final, mas segue destacado nas métricas
     excl_mask = df["Sub-Categoria"].astype(str).str.strip().str.lower().eq("excluir")
 
     # registra subcategoria intermediária antes de virar "Excluir"
     df.loc[excl_mask, "SubCat_Intermediaria"] = df.loc[excl_mask, "_SubCat_Original"]
 
-    # mantém cópias separadas
+    # mantém cópias separadas para controles
     df_excluidos = df[excl_mask].copy()
-    df_final = df[~excl_mask].copy()
+    df_final = df.copy()
 
     # df_all = todas as linhas com ações (inclui Excluir)
     df_all = df.copy()
@@ -258,8 +258,15 @@ def process_dataframe(df_in: pd.DataFrame,
 
     # renomear originais para nomes “bonitos”
     for _tgt in (df_final, df_excluidos, df_all):
+        rename_map = {}
         if "_Cat_Original" in _tgt.columns:
-            _tgt.rename(columns={"_Cat_Original":"Cat Original","_SubCat_Original":"SubCat Original"}, inplace=True)
+            rename_map["_Cat_Original"] = "Cat Original"
+        if "_SubCat_Original" in _tgt.columns:
+            rename_map["_SubCat_Original"] = "SubCat Original"
+        if "Nova SubCat" in _tgt.columns:
+            rename_map["Nova SubCat"] = "SubCat Catalogada"
+        if rename_map:
+            _tgt.rename(columns=rename_map, inplace=True)
 
     # Métricas
     metrics = {
