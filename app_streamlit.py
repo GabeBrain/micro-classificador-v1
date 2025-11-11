@@ -3,6 +3,7 @@ import time
 import pandas as pd
 import streamlit as st
 import altair as alt
+from pathlib import Path
 
 from microcore.pipeline import process_dataframe
 from microcore.catalog_loader import load_mapping_gsheets
@@ -180,6 +181,12 @@ if not data_file:
     st.stop()
 
 df_in = pd.read_excel(data_file, engine="openpyxl")
+timestamp_tag = time.strftime("%d%m_%H%M")
+uploaded_name = getattr(data_file, "name", "resultado_mvp_v1.xlsx")
+upload_path = Path(uploaded_name)
+download_base = upload_path.stem or "resultado_mvp_v1"
+download_ext = upload_path.suffix or ".xlsx"
+processed_filename = f"{download_base}_Processado_{timestamp_tag}{download_ext}"
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.write("Prévia (30 primeiras linhas):")
 st.dataframe(df_in.head(30), use_container_width=True)
@@ -321,7 +328,7 @@ with dl_cols[0]:
     st.download_button(
         "📥 Baixar XLSX",
         data=out_buf.getvalue(),
-        file_name="resultado_mvp_v1.xlsx",
+        file_name=processed_filename,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
