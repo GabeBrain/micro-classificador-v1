@@ -224,6 +224,18 @@ def process_dataframe(df_in: pd.DataFrame,
             df.at[i, "fonte"] = "nenhum"
             df.at[i, "confianca"] = round(float(sim), 4)
 
+    # 3.1) Regra fixa: qualquer endereço contendo "Shopping" vira Excluir
+    shopping_mask = (
+        df["Endereço"]
+        .astype(str)
+        .str.contains("shopping", case=False, na=False)
+    )
+    if shopping_mask.any():
+        df.loc[shopping_mask, "Sub-Categoria"] = "Excluir"
+        df.loc[shopping_mask, "acao"] = "Excluir"
+        df.loc[shopping_mask, "fonte"] = "regra-endereco"
+        df.loc[shopping_mask, "confianca"] = 1.0
+
     _update(0.90, "Finalizando e aplicando filtros de exclusão...")
 
     # 4) “Excluir” permanece no dataset final, mas segue destacado nas métricas
