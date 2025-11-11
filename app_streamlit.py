@@ -43,10 +43,10 @@ DEFAULT_CATEGORY_ICON = "📊"
 FINAL_XLSX_COLUMNS = [
     "Nome",
     "Cat Original",
-    "Categoria",
     "SubCat Original",
     "SubCat Catalogada",
     "Sub-Categoria",
+    "Categoria",
     "fonte",
     "acao",
     "Endereço",
