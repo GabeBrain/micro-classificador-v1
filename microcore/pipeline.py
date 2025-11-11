@@ -117,7 +117,7 @@ def process_dataframe(df_in: pd.DataFrame,
             df.loc[cont_mask, "_nova_contains"].str.strip().str.lower()=="excluir", "Excluir", "Corrigir"
         )
         df.loc[cont_mask, "fonte"] = "catalogo-contains"
-        df.loc[cont_mask, "confianca"] = 0.92
+        df.loc[cont_mask, "confianca"] = 0.90
         # guard-rail
         for i in df.index[cont_mask]:
             k_norm = norm_text(str(df.at[i, "Sub-Categoria"]))
@@ -153,11 +153,11 @@ def process_dataframe(df_in: pd.DataFrame,
             nova_pred_norm = nova_pred.lower()
 
             # regra geral
-            #  - se divergir e sim >= 0.70 => Corrigir
+            #  - se divergir e sim >= lo_threshold => Corrigir
             #  - se for categoria problemática => Corrigir mesmo que sim >= 0.35
             #  - se for problemática e sim < 0.35 => marcar para Verificar
             if nova_pred_norm != categoria_atual:
-                if sim >= 0.70 or (is_problematic and sim >= 0.35):
+                if sim >= lo_threshold or (is_problematic and sim >= 0.35):
                     df.at[i, "Sub-Categoria"] = nova_pred
                     df.at[i, "acao"] = "Corrigir"
                     df.at[i, "fonte"] = "semantico-validador"
