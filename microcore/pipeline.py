@@ -236,6 +236,26 @@ def process_dataframe(df_in: pd.DataFrame,
         df.loc[shopping_mask, "fonte"] = "regra-endereco"
         df.loc[shopping_mask, "confianca"] = 1.0
 
+    # 3.2) Remover duplicados antes de calcular métricas/exportar
+    dedupe_subset = [
+        "ID",
+        "Nome",
+        "Endereço",
+        "Categoria",
+        "Sub-Categoria",
+        "_Cat_Original",
+        "_SubCat_Original",
+        "SubCat_Intermediaria",
+        "acao",
+        "fonte",
+        "confianca",
+    ]
+    dedupe_subset = [c for c in dedupe_subset if c in df.columns]
+    if dedupe_subset:
+        df = df.drop_duplicates(subset=dedupe_subset).reset_index(drop=True)
+    else:
+        df = df.drop_duplicates().reset_index(drop=True)
+
     _update(0.90, "Finalizando e aplicando filtros de exclusão...")
 
     # 4) “Excluir” permanece no dataset final, mas segue destacado nas métricas
