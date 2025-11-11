@@ -40,6 +40,26 @@ CATEGORY_ICONS = {
     "Automotivo": "🚗",
 }
 DEFAULT_CATEGORY_ICON = "📊"
+FINAL_XLSX_COLUMNS = [
+    "Nome",
+    "Cat Original",
+    "Categoria",
+    "SubCat Original",
+    "SubCat_Intermediaria",
+    "SubCat Catalogada",
+    "Sub-Categoria",
+    "fonte",
+    "acao",
+    "confianca",
+    "Endereço",
+    "ID",
+    "Ativo",
+    "Em Shopping",
+    "Porte",
+    "Classe",
+    "Longitude",
+    "Latitude",
+]
 
 st.markdown(
     f"""
@@ -320,8 +340,11 @@ else:
 # ---------- Download ----------
 st.markdown("### 7) Baixar resultado")
 out_buf = io.BytesIO()
+final_cols = [col for col in FINAL_XLSX_COLUMNS if col in df_final.columns]
+final_cols += [col for col in df_final.columns if col not in final_cols]
+df_final_export = df_final[final_cols]
 with pd.ExcelWriter(out_buf, engine="openpyxl") as writer:
-    df_final.to_excel(writer, index=False, sheet_name="final")
+    df_final_export.to_excel(writer, index=False, sheet_name="final")
     baixa_conf.to_excel(writer, index=False, sheet_name="baixa_confianca")
 
 dl_cols = st.columns([1, 3, 1])
