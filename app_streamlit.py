@@ -1,5 +1,6 @@
 import io
 import time
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 import streamlit as st
 import altair as alt
@@ -181,7 +182,8 @@ if not data_file:
     st.stop()
 
 df_in = pd.read_excel(data_file, engine="openpyxl")
-timestamp_tag = time.strftime("%d%m_%H%M")
+br_tz = timezone(timedelta(hours=-3))
+timestamp_tag = datetime.now(br_tz).strftime("%d%m_%H%M")
 uploaded_name = getattr(data_file, "name", "resultado_mvp_v1.xlsx")
 upload_path = Path(uploaded_name)
 download_base = upload_path.stem or "resultado_mvp_v1"
