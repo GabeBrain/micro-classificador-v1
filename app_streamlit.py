@@ -30,14 +30,13 @@ TEXT = "#31333F"
 
 CATEGORY_ICONS = {
     "Alimentação": "🍽️",
-    "Beleza": "💄",
-    "Saúde": "🩺",
+    "Saúde e Bem Estar": "🩺",
     "Serviços": "🛠️",
     "Moda": "👗",
-    "Tecnologia": "💻",
-    "Lazer": "🎯",
-    "Financeiro": "💰",
-    "Casa": "🏠",
+    "Educação": "📚",
+    "Outros": "🧩",
+    "Inst. Financeira": "🏦",
+    "Decoração": "🏠",
     "Automotivo": "🚗",
 }
 DEFAULT_CATEGORY_ICON = "📊"
