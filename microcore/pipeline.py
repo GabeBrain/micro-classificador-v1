@@ -1,3 +1,4 @@
+import re
 from typing import Tuple
 import pandas as pd
 import numpy as np
@@ -5,6 +6,18 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from .utils import norm_text
+
+_LOJA_PREFIX_RE = re.compile(r"^\s*lojas?\s+(?:de|da|do|das|dos)?\s*", re.IGNORECASE)
+
+
+def _strip_loja_prefix(value):
+    if pd.isna(value):
+        return value
+    text = str(value).strip()
+    if not text:
+        return text
+    cleaned = _LOJA_PREFIX_RE.sub("", text).strip()
+    return cleaned or text
 
 def _build_tfidf_index(target_terms: list[str]):
     vec = TfidfVectorizer(ngram_range=(1,2), min_df=1)
@@ -53,6 +66,9 @@ def process_dataframe(df_in: pd.DataFrame,
     # SALVAR ORIGINAIS para painel de reclassificação
     df["_Cat_Original"] = df["Categoria"].astype(str)
     df["_SubCat_Original"] = df["Sub-Categoria"].astype(str)
+
+    # remove prefixos como "Loja de" para melhorar o casamento semântico
+    df["Sub-Categoria"] = df["Sub-Categoria"].apply(_strip_loja_prefix)
 
     _update(0.10, "Criando dicionários e guard-rails...")
 
