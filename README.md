@@ -1,7 +1,7 @@
-# Micro Classificador — MVP v1
+# Micro Classificador — v2
 
-MVP para reclassificar registros por **catálogo determinístico** + **similaridade semântica leve (TF-IDF)**. 
-Subcategorias "Excluir" são removidas do resultado final.
+Reclassificador por **catálogo determinístico** + **similaridade semântica leve (TF-IDF)** com curadoria interativa das subcategorias mantidas.
+Subcategorias "Excluir" são removidas do resultado final, e novas equivalências podem ser registradas direto no app (com envio automático para o Google Sheets).
 
 ## Rodar local
 ```bash

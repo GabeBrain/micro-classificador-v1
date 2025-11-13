@@ -1,20 +1,31 @@
 import io
 import time
 from datetime import datetime, timezone, timedelta
-import pandas as pd
-import streamlit as st
-import altair as alt
 from pathlib import Path
 
+import pandas as pd
+import streamlit as st
+from rapidfuzz import fuzz, process as rf_process
+
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    from gspread.exceptions import WorksheetNotFound
+except ImportError:
+    gspread = None
+    Credentials = None
+    WorksheetNotFound = Exception
+
 from microcore.pipeline import process_dataframe
-from microcore.catalog_loader import load_mapping_gsheets
+from microcore.catalog_loader import load_mapping_gsheets, SHEET_ID
+from microcore.utils import norm_text
 
 
 # ---------- Config da página ----------
 st.set_page_config(
     layout="wide",
-    page_title="Micro Classificador | MVP v1",
-    page_icon="🧭"
+    page_title="Micro Classificador | v2",
+    page_icon=":compass:"
 )
 
 
@@ -60,6 +71,103 @@ FINAL_XLSX_COLUMNS = [
     "Longitude",
     "Latitude",
 ]
+
+GS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+
+@st.cache_resource(show_spinner=False)
+def _get_gspread_client():
+    if gspread is None or Credentials is None:
+        raise RuntimeError("Instale 'gspread' e 'google-auth' para habilitar escrita no catálogo.")
+    if "gcp_service_account" not in st.secrets:
+        raise RuntimeError("Configure st.secrets['gcp_service_account'] com as credenciais do Google.")
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=GS_SCOPES,
+    )
+    return gspread.authorize(creds)
+
+
+def _append_mapping_to_catalog(subcat_original: str, nova_subcat: str, categoria: str):
+    client = _get_gspread_client()
+    sh = client.open_by_key(SHEET_ID)
+    try:
+        worksheet = sh.worksheet(categoria)
+    except WorksheetNotFound as exc:
+        raise RuntimeError(f"Aba '{categoria}' não encontrada no Google Sheets.") from exc
+
+    headers = worksheet.row_values(1)
+    payload = []
+    if headers:
+        for header in headers:
+            key = header.strip().lower()
+            if key in {"subcat original", "subcat_original"}:
+                payload.append(subcat_original)
+            elif key in {"nova subcat", "nova_subcat"}:
+                payload.append(nova_subcat)
+            else:
+                payload.append("")
+    else:
+        payload = [subcat_original, nova_subcat]
+
+    worksheet.append_row(payload, value_input_option="USER_ENTERED")
+
+
+def _catalog_suggestions(query: str, mapping_df: pd.DataFrame, limit: int = 5):
+    if not query:
+        return []
+    catalog_terms = (
+        mapping_df["Nova SubCat"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .unique()
+        .tolist()
+    )
+    if not catalog_terms:
+        return []
+    matches = rf_process.extract(
+        query,
+        catalog_terms,
+        scorer=fuzz.WRatio,
+        limit=limit,
+    )
+    suggestions = []
+    for match, score, _ in matches:
+        if match:
+            suggestions.append({"label": match, "score": round(float(score), 1)})
+    return suggestions
+
+
+def _default_category_for_subcat(nova_subcat: str, mapping_df: pd.DataFrame):
+    if not nova_subcat:
+        return None
+    mask = (
+        mapping_df["Nova SubCat"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .eq(str(nova_subcat).strip().lower())
+    )
+    match = mapping_df.loc[mask, "categoria_oficial"].head(1)
+    return match.iloc[0] if not match.empty else None
+
+
+def _extend_catalog_with_session_entries(mapping_df: pd.DataFrame):
+    new_entries = st.session_state.get("new_mappings", [])
+    if not new_entries:
+        return mapping_df
+    additions = pd.DataFrame(new_entries)
+    if additions.empty:
+        return mapping_df
+    additions["k_original"] = additions["SubCat Original"].astype(str).map(norm_text)
+    additions["k_nova"] = additions["Nova SubCat"].astype(str).map(norm_text)
+    additions["k_categoria"] = additions["categoria_oficial"].astype(str).map(norm_text)
+    combined = pd.concat([mapping_df, additions], ignore_index=True)
+    combined = combined.drop_duplicates(
+        subset=["k_original", "k_nova", "k_categoria"], keep="last"
+    )
+    return combined
 
 st.markdown(
     f"""
@@ -108,11 +216,18 @@ st.markdown(
 )
 
 # ---------- Header ----------
-st.markdown("## 🧭 Micro Classificador — MVP v1")
+st.markdown("## 🧭 Micro Classificador — v2")
 st.caption(
     "Reclassificação por **catálogo determinístico** + **similaridade semântica (TF-IDF)**. "
     "Subcategorias **“Excluir”** são removidas do resultado final."
 )
+
+if "process_result" not in st.session_state:
+    st.session_state["process_result"] = None
+if "should_process" not in st.session_state:
+    st.session_state["should_process"] = False
+if "new_mappings" not in st.session_state:
+    st.session_state["new_mappings"] = []
 
 with st.sidebar:
     st.markdown("### ⚙️ Parâmetros")
@@ -131,6 +246,7 @@ st.link_button(
 
 try:
     mapping_df = load_mapping_gsheets()
+    mapping_df = _extend_catalog_with_session_entries(mapping_df)
     
     num_cats = mapping_df["categoria_oficial"].nunique()
     num_mapeamentos = len(mapping_df)
@@ -203,9 +319,9 @@ if not data_file:
 df_in = pd.read_excel(data_file, engine="openpyxl")
 br_tz = timezone(timedelta(hours=-3))
 timestamp_tag = datetime.now(br_tz).strftime("%d%m_%H%M")
-uploaded_name = getattr(data_file, "name", "resultado_mvp_v1.xlsx")
+uploaded_name = getattr(data_file, "name", "resultado_v2.xlsx")
 upload_path = Path(uploaded_name)
-download_base = upload_path.stem or "resultado_mvp_v1"
+download_base = upload_path.stem or "resultado_v2"
 download_ext = upload_path.suffix or ".xlsx"
 processed_filename = f"{download_base}_Processado_{timestamp_tag}{download_ext}"
 st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -213,19 +329,20 @@ st.write("Prévia (30 primeiras linhas):")
 st.dataframe(df_in.head(30), use_container_width=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------- Etapa 3: Processar (com placeholder para evitar erro de sessão) ----------
+# ---------- Etapa 3: Processar ----------
 st.markdown("### 3) Processar")
-placeholder = st.empty()
-run_col, _ = st.columns([1, 3])
-with run_col:
-    run = st.button("🚀 Processar agora", type="primary", use_container_width=True)
+process_placeholder = st.empty()
+process_cols = st.columns([1, 1, 2])
+with process_cols[0]:
+    if st.button("🚀 Processar agora", type="primary", use_container_width=True):
+        st.session_state["should_process"] = True
+with process_cols[1]:
+    disabled_reprocess = st.session_state["process_result"] is None
+    if st.button("🔁 Reprocessar catálogo atualizado", use_container_width=True, disabled=disabled_reprocess):
+        st.session_state["should_process"] = True
 
-if not run:
-    st.stop()
-
-placeholder.info("⏳ Iniciando processamento...")
-
-try:
+if st.session_state.get("should_process"):
+    process_placeholder.info("⏳ Iniciando processamento...")
     progress = st.progress(0)
     status = st.empty()
 
@@ -233,22 +350,45 @@ try:
         progress.progress(fraction)
         status.info(text)
 
-    start = time.time()
-    df_final, baixa_conf, metrics, df_all = process_dataframe(
-        df_in,
-        mapping_df,
-        hi_threshold=hi,
-        lo_threshold=lo,
-        progress_callback=progress_callback
-    )
-    elapsed = time.time() - start
+    try:
+        start_run = time.time()
+        df_final, baixa_conf, metrics, df_all = process_dataframe(
+            df_in,
+            mapping_df,
+            hi_threshold=hi,
+            lo_threshold=lo,
+            progress_callback=progress_callback
+        )
+        elapsed = time.time() - start_run
+    except Exception as exc:
+        progress.empty()
+        process_placeholder.error(f"❌ Erro durante o processamento: {exc}")
+        st.session_state["should_process"] = False
+        st.session_state["process_result"] = None
+        st.stop()
+    else:
+        st.session_state["process_result"] = {
+            "df_final": df_final,
+            "baixa_conf": baixa_conf,
+            "metrics": metrics,
+            "df_all": df_all,
+            "processed_filename": processed_filename,
+        }
+        progress.empty()
+        status.success(f"✅ Concluído em {elapsed:.2f}s")
+        st.session_state["should_process"] = False
 
-    progress.empty()
-    status.success(f"✅ Concluído em {elapsed:.2f}s")
-
-except Exception as e:
-    placeholder.error(f"❌ Erro durante o processamento: {e}")
+result_bundle = st.session_state.get("process_result")
+if result_bundle is None:
+    st.info("Envie o arquivo e clique em **Processar agora** para gerar os painéis.")
     st.stop()
+
+df_final = result_bundle["df_final"]
+baixa_conf = result_bundle["baixa_conf"]
+metrics = result_bundle["metrics"]
+df_all = result_bundle["df_all"]
+processed_filename = result_bundle.get("processed_filename", processed_filename)
+
 
 # ---------- Métricas ----------
 st.markdown("### 4) Métricas de execução")
@@ -293,48 +433,140 @@ if "fonte" in panel.columns:
         else:
             st.info(f"Sem registros para '{fonte}'.")
 
-# ---------- Análise descritiva das subcategorias ----------
-st.markdown("### 6) Análise descritiva das subcategorias (sem 'Excluir')")
+# ---------- Curadoria das subcategorias "Manter" ----------
+st.markdown("### 6) Curadoria e mapeamento direto das subcategorias com ação 'Manter'")
 
-if {"Cat Nova","SubCat Nova"}.issubset(panel.columns):
-    final_view = panel[
-        ~panel["SubCat Nova"].astype(str).str.strip().str.lower().eq("excluir")
-    ].copy()
-    final_view.rename(columns={"Cat Nova":"Categoria", "SubCat Nova":"Sub-Categoria"}, inplace=True)
+panel["__acao_norm"] = panel["acao"].astype(str).str.strip().str.lower()
+manter_df = panel[panel["__acao_norm"] == "manter"].copy()
 
-    if {"Categoria","Sub-Categoria"}.issubset(final_view.columns):
-        counts = (
-            final_view
-            .groupby(["Categoria","Sub-Categoria"])
-            .size()
-            .reset_index(name="Qtd")
-        )
-        
-        counts["Percentual"] = (
-            counts["Qtd"] / counts.groupby("Categoria")["Qtd"].transform("sum") * 100
-        ).round(2)
-
-        st.caption("Distribuição (%) de subcategorias dentro de cada categoria:")
-
-        for cat in sorted(counts["Categoria"].unique()):
-            subset = counts[counts["Categoria"] == cat].sort_values("Percentual", ascending=True)
-            with st.expander(f"{cat} ({len(subset)} subcategorias)"):
-                chart = (
-                    alt.Chart(subset)
-                    .mark_bar()
-                    .encode(
-                        x=alt.X("Percentual:Q", title="% dentro da categoria"),
-                        y=alt.Y("Sub-Categoria:N", sort="-x", title="Subcategoria"),
-                        tooltip=["Sub-Categoria","Percentual"]
-                    )
-                    .properties(height=max(300, 25 * len(subset)))
-                )
-                st.altair_chart(chart, use_container_width=True)
-    else:
-        st.warning("Colunas 'Categoria' e 'Sub-Categoria' não encontradas no resultado final.")
+if manter_df.empty:
+    st.success("Nenhuma subcategoria pendente — todas receberam classificação.")
 else:
-    st.warning("Painel não possui colunas 'Cat Nova' / 'SubCat Nova'.")
+    resumo_manter = (
+        manter_df.groupby("SubCat Original")
+        .agg(
+            Registros=("SubCat Original", "size"),
+            Conf_media=("confianca", "mean"),
+            Conf_max=("confianca", "max"),
+        )
+        .reset_index()
+        .sort_values("Registros", ascending=False)
+    )
+    resumo_manter["Conf_media"] = resumo_manter["Conf_media"].round(3)
+    resumo_manter["Conf_max"] = resumo_manter["Conf_max"].round(3)
 
+    st.caption(
+        "Priorize as subcategorias com mais ocorrências para reduzir o backlog. "
+        "Após salvar um novo vínculo, clique em **Reprocessar catálogo atualizado** para aplicar o aprendizado."
+    )
+
+    list_col, action_col = st.columns([3, 2])
+
+    with list_col:
+        st.dataframe(resumo_manter, use_container_width=True)
+
+    with action_col:
+        st.markdown("#### Resolver pendência")
+        pendentes = resumo_manter["SubCat Original"].tolist()
+        selected_pending = st.selectbox(
+            "Subcategoria original",
+            pendentes,
+            index=0,
+            key="pending_subcat_select",
+        )
+
+        suggestions = _catalog_suggestions(selected_pending, mapping_df, limit=5)
+        if suggestions:
+            st.caption("Top 5 sugestões do catálogo:")
+            for item in suggestions:
+                st.write(f"- {item['label']} (score {item['score']:.0f})")
+        else:
+            st.info("Nenhuma sugestão forte encontrada — utilize busca ou cadastre uma nova.")
+
+        mode_options = [
+            "Usar sugestões automáticas",
+            "Buscar no catálogo",
+            "Cadastrar nova subcategoria",
+        ]
+        mapping_mode = st.radio(
+            "Como deseja mapear?",
+            mode_options,
+            index=0,
+            key="mapping_mode_radio",
+        )
+
+        selected_nova = None
+        if mapping_mode == mode_options[0]:
+            if suggestions:
+                suggestion_labels = [
+                    f"{item['label']} (score {item['score']:.0f})" for item in suggestions
+                ]
+                chosen = st.radio(
+                    "Escolha uma das sugestões",
+                    suggestion_labels,
+                    key="suggestion_choice",
+                )
+                if chosen:
+                    idx = suggestion_labels.index(chosen)
+                    selected_nova = suggestions[idx]["label"]
+            else:
+                selected_nova = None
+        elif mapping_mode == mode_options[1]:
+            catalog_options = sorted(
+                mapping_df["Nova SubCat"].dropna().astype(str).str.strip().unique().tolist()
+            )
+            selected_nova = st.selectbox(
+                "Busque pela subcategoria padronizada",
+                catalog_options,
+                key="catalog_search_select",
+            )
+        else:
+            manual_value = st.text_input(
+                "Descreva a nova subcategoria",
+                key="new_subcat_manual",
+            )
+            selected_nova = manual_value.strip() if manual_value else None
+
+        categorias = sorted(mapping_df["categoria_oficial"].dropna().unique().tolist())
+        if selected_nova:
+            selected_nova = selected_nova.strip()
+        default_cat = _default_category_for_subcat(selected_nova, mapping_df)
+        default_idx = categorias.index(default_cat) if default_cat in categorias else 0
+        categoria_escolhida = st.selectbox(
+            "Categoria oficial destino",
+            categorias,
+            index=default_idx,
+            key="categoria_destino_select",
+        )
+
+        can_submit = bool(selected_pending and selected_nova and categoria_escolhida)
+        if st.button(
+            "Salvar mapeamento no catálogo",
+            use_container_width=True,
+            disabled=not can_submit,
+        ):
+            try:
+                _append_mapping_to_catalog(selected_pending, selected_nova, categoria_escolhida)
+            except Exception as exc:
+                st.error(f"Não foi possível gravar no Google Sheets: {exc}")
+            else:
+                registro = {
+                    "SubCat Original": selected_pending,
+                    "Nova SubCat": selected_nova,
+                    "categoria_oficial": categoria_escolhida,
+                }
+                st.session_state["new_mappings"].append(registro)
+                novo_df = pd.DataFrame([registro])
+                novo_df["k_original"] = novo_df["SubCat Original"].astype(str).map(norm_text)
+                novo_df["k_nova"] = novo_df["Nova SubCat"].astype(str).map(norm_text)
+                novo_df["k_categoria"] = novo_df["categoria_oficial"].astype(str).map(norm_text)
+                mapping_df = pd.concat([mapping_df, novo_df], ignore_index=True)
+                st.success("Mapeamento adicionado! Reprocessar aplicará o novo catálogo.")
+
+    if st.session_state["new_mappings"]:
+        st.markdown("#### Mapeamentos adicionados nesta sessão")
+        historico_df = pd.DataFrame(st.session_state["new_mappings"])
+        st.dataframe(historico_df, use_container_width=True)
 
 
 # ---------- Download ----------
@@ -357,4 +589,4 @@ with dl_cols[0]:
         use_container_width=True
     )
 
-st.caption("MVP v1 — pronto para demonstração e coleta de feedbacks.")
+st.caption("v2 — pronto para demonstração e coleta de feedbacks.")
