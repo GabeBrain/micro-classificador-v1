@@ -224,17 +224,17 @@ def process_dataframe(df_in: pd.DataFrame,
             df.at[i, "fonte"] = "nenhum"
             df.at[i, "confianca"] = round(float(sim), 4)
 
-    # 3.1) Regra fixa: qualquer endereço contendo "Shopping" vira Excluir
-    shopping_mask = (
+    # 3.1) Regra fixa: endereço contendo palavras-alvo vira Excluir
+    endereco_excluir_mask = (
         df["Endereço"]
         .astype(str)
-        .str.contains("shopping", case=False, na=False)
+        .str.contains(r"\b(shopping|loja|lj|ponto|conj|conjunto)\b", case=False, na=False)
     )
-    if shopping_mask.any():
-        df.loc[shopping_mask, "Sub-Categoria"] = "Excluir"
-        df.loc[shopping_mask, "acao"] = "Excluir"
-        df.loc[shopping_mask, "fonte"] = "regra-endereco"
-        df.loc[shopping_mask, "confianca"] = 1.0
+    if endereco_excluir_mask.any():
+        df.loc[endereco_excluir_mask, "Sub-Categoria"] = "Excluir"
+        df.loc[endereco_excluir_mask, "acao"] = "Excluir"
+        df.loc[endereco_excluir_mask, "fonte"] = "regra-endereco"
+        df.loc[endereco_excluir_mask, "confianca"] = 1.0
 
     # 3.2) Remover duplicados antes de calcular métricas/exportar
     dedupe_subset = [
