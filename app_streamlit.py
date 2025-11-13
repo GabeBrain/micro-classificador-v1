@@ -460,108 +460,104 @@ else:
         "Após salvar um novo vínculo, clique em **Reprocessar catálogo atualizado** para aplicar o aprendizado."
     )
 
-    list_col, action_col = st.columns([3, 2])
+    st.dataframe(resumo_manter, use_container_width=True)
 
-    with list_col:
-        st.dataframe(resumo_manter, use_container_width=True)
+    st.markdown("#### Resolver pendência")
+    pendentes = resumo_manter["SubCat Original"].tolist()
+    selected_pending = st.selectbox(
+        "Subcategoria original",
+        pendentes,
+        index=0,
+        key="pending_subcat_select",
+    )
 
-    with action_col:
-        st.markdown("#### Resolver pendência")
-        pendentes = resumo_manter["SubCat Original"].tolist()
-        selected_pending = st.selectbox(
-            "Subcategoria original",
-            pendentes,
-            index=0,
-            key="pending_subcat_select",
-        )
+    suggestions = _catalog_suggestions(selected_pending, mapping_df, limit=5)
+    if suggestions:
+        st.caption("Top 5 sugestões do catálogo:")
+        for item in suggestions:
+            st.write(f"- {item['label']} (score {item['score']:.0f})")
+    else:
+        st.info("Nenhuma sugestão forte encontrada — utilize busca ou cadastre uma nova.")
 
-        suggestions = _catalog_suggestions(selected_pending, mapping_df, limit=5)
+    mode_options = [
+        "Usar sugestões automáticas",
+        "Buscar no catálogo",
+        "Cadastrar nova subcategoria",
+    ]
+    mapping_mode = st.radio(
+        "Como deseja mapear?",
+        mode_options,
+        index=0,
+        key="mapping_mode_radio",
+    )
+
+    selected_nova = None
+    if mapping_mode == mode_options[0]:
         if suggestions:
-            st.caption("Top 5 sugestões do catálogo:")
-            for item in suggestions:
-                st.write(f"- {item['label']} (score {item['score']:.0f})")
+            suggestion_labels = [
+                f"{item['label']} (score {item['score']:.0f})" for item in suggestions
+            ]
+            chosen = st.radio(
+                "Escolha uma das sugestões",
+                suggestion_labels,
+                key="suggestion_choice",
+            )
+            if chosen:
+                idx = suggestion_labels.index(chosen)
+                selected_nova = suggestions[idx]["label"]
         else:
-            st.info("Nenhuma sugestão forte encontrada — utilize busca ou cadastre uma nova.")
-
-        mode_options = [
-            "Usar sugestões automáticas",
-            "Buscar no catálogo",
-            "Cadastrar nova subcategoria",
-        ]
-        mapping_mode = st.radio(
-            "Como deseja mapear?",
-            mode_options,
-            index=0,
-            key="mapping_mode_radio",
+            selected_nova = None
+    elif mapping_mode == mode_options[1]:
+        catalog_options = sorted(
+            mapping_df["Nova SubCat"].dropna().astype(str).str.strip().unique().tolist()
         )
+        selected_nova = st.selectbox(
+            "Busque pela subcategoria padronizada",
+            catalog_options,
+            key="catalog_search_select",
+        )
+    else:
+        manual_value = st.text_input(
+            "Descreva a nova subcategoria",
+            key="new_subcat_manual",
+        )
+        selected_nova = manual_value.strip() if manual_value else None
 
-        selected_nova = None
-        if mapping_mode == mode_options[0]:
-            if suggestions:
-                suggestion_labels = [
-                    f"{item['label']} (score {item['score']:.0f})" for item in suggestions
-                ]
-                chosen = st.radio(
-                    "Escolha uma das sugestões",
-                    suggestion_labels,
-                    key="suggestion_choice",
-                )
-                if chosen:
-                    idx = suggestion_labels.index(chosen)
-                    selected_nova = suggestions[idx]["label"]
-            else:
-                selected_nova = None
-        elif mapping_mode == mode_options[1]:
-            catalog_options = sorted(
-                mapping_df["Nova SubCat"].dropna().astype(str).str.strip().unique().tolist()
-            )
-            selected_nova = st.selectbox(
-                "Busque pela subcategoria padronizada",
-                catalog_options,
-                key="catalog_search_select",
-            )
+    categorias = sorted(mapping_df["categoria_oficial"].dropna().unique().tolist())
+    if selected_nova:
+        selected_nova = selected_nova.strip()
+    default_cat = _default_category_for_subcat(selected_nova, mapping_df)
+    default_idx = categorias.index(default_cat) if default_cat in categorias else 0
+    categoria_escolhida = st.selectbox(
+        "Categoria oficial destino",
+        categorias,
+        index=default_idx,
+        key="categoria_destino_select",
+    )
+
+    can_submit = bool(selected_pending and selected_nova and categoria_escolhida)
+    if st.button(
+        "Salvar mapeamento no catálogo",
+        use_container_width=True,
+        disabled=not can_submit,
+    ):
+        try:
+            _append_mapping_to_catalog(selected_pending, selected_nova, categoria_escolhida)
+        except Exception as exc:
+            st.error(f"Não foi possível gravar no Google Sheets: {exc}")
         else:
-            manual_value = st.text_input(
-                "Descreva a nova subcategoria",
-                key="new_subcat_manual",
-            )
-            selected_nova = manual_value.strip() if manual_value else None
-
-        categorias = sorted(mapping_df["categoria_oficial"].dropna().unique().tolist())
-        if selected_nova:
-            selected_nova = selected_nova.strip()
-        default_cat = _default_category_for_subcat(selected_nova, mapping_df)
-        default_idx = categorias.index(default_cat) if default_cat in categorias else 0
-        categoria_escolhida = st.selectbox(
-            "Categoria oficial destino",
-            categorias,
-            index=default_idx,
-            key="categoria_destino_select",
-        )
-
-        can_submit = bool(selected_pending and selected_nova and categoria_escolhida)
-        if st.button(
-            "Salvar mapeamento no catálogo",
-            use_container_width=True,
-            disabled=not can_submit,
-        ):
-            try:
-                _append_mapping_to_catalog(selected_pending, selected_nova, categoria_escolhida)
-            except Exception as exc:
-                st.error(f"Não foi possível gravar no Google Sheets: {exc}")
-            else:
-                registro = {
-                    "SubCat Original": selected_pending,
-                    "Nova SubCat": selected_nova,
-                    "categoria_oficial": categoria_escolhida,
-                }
-                st.session_state["new_mappings"].append(registro)
-                novo_df = pd.DataFrame([registro])
-                novo_df["k_original"] = novo_df["SubCat Original"].astype(str).map(norm_text)
-                novo_df["k_nova"] = novo_df["Nova SubCat"].astype(str).map(norm_text)
-                novo_df["k_categoria"] = novo_df["categoria_oficial"].astype(str).map(norm_text)
-                mapping_df = pd.concat([mapping_df, novo_df], ignore_index=True)
-                st.success("Mapeamento adicionado! Reprocessar aplicará o novo catálogo.")
+            registro = {
+                "SubCat Original": selected_pending,
+                "Nova SubCat": selected_nova,
+                "categoria_oficial": categoria_escolhida,
+            }
+            st.session_state["new_mappings"].append(registro)
+            novo_df = pd.DataFrame([registro])
+            novo_df["k_original"] = novo_df["SubCat Original"].astype(str).map(norm_text)
+            novo_df["k_nova"] = novo_df["Nova SubCat"].astype(str).map(norm_text)
+            novo_df["k_categoria"] = novo_df["categoria_oficial"].astype(str).map(norm_text)
+            mapping_df = pd.concat([mapping_df, novo_df], ignore_index=True)
+            st.success("Mapeamento adicionado! Reprocessar aplicará o novo catálogo.")
 
     if st.session_state["new_mappings"]:
         st.markdown("#### Mapeamentos adicionados nesta sessão")
