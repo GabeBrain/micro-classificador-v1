@@ -493,6 +493,12 @@ else:
                 del st.session_state["suggestion_choice"]
 
     active_pending = st.session_state.get("active_pending_subcat")
+    if active_pending and active_pending not in pendentes:
+        # subcategoria ativa saiu da lista apos reprocessar; reinicia estado
+        st.session_state["active_pending_subcat"] = None
+        active_pending = None
+        if "suggestion_choice" in st.session_state:
+            del st.session_state["suggestion_choice"]
 
     if active_pending:
         with col_action:
