@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from .utils import norm_text
 
 _LOJA_PREFIX_RE = re.compile(
-    r"^\s*(?:lojas?|postos?|est[úu]dios?|empresas?|serviços?)\s+(?:de|da|do|das|dos)?\s*",
+    r"^\s*(?:lojas?|postos?|est[úu]dios?|empresas?|serviços?)\s+(?:de|da|do|das|dos|para)?\s*",
     re.IGNORECASE,
 )
 
@@ -50,6 +50,20 @@ def process_dataframe(df_in: pd.DataFrame,
       - Sub-Categoria -> Categoria sempre ajustada para a 'categoria_oficial' do mapeamento
     """
     df = df_in.copy()
+    mapping_df = mapping_df.copy()
+
+    # aplicar a mesma limpeza de prefixos ao catalogo para evitar mismatches
+    if "SubCat Original" in mapping_df.columns:
+        mapping_df["_SubCat_Original_Clean"] = mapping_df["SubCat Original"].apply(_strip_loja_prefix)
+    else:
+        mapping_df["_SubCat_Original_Clean"] = ""
+    if "Nova SubCat" in mapping_df.columns:
+        mapping_df["_Nova_SubCat_Clean"] = mapping_df["Nova SubCat"].apply(_strip_loja_prefix)
+    else:
+        mapping_df["_Nova_SubCat_Clean"] = ""
+
+    mapping_df["k_original"] = mapping_df["_SubCat_Original_Clean"].astype(str).map(norm_text)
+    mapping_df["k_nova"] = mapping_df["_Nova_SubCat_Clean"].astype(str).map(norm_text)
 
     # helper interno para atualizar a barra
     def _update(frac, text):
@@ -149,7 +163,9 @@ def process_dataframe(df_in: pd.DataFrame,
     idx_det = df.index[det_mask].tolist()
 
     if len(idx_det) > 0:
-        target_terms_pretty = mapping_df["SubCat Original"].astype(str).dropna().unique().tolist()
+        target_terms_pretty = (
+            mapping_df["_SubCat_Original_Clean"].astype(str).dropna().unique().tolist()
+        )
         target_terms_norm = [norm_text(t) for t in target_terms_pretty]
         vec_val, X_val = _build_tfidf_index(target_terms_norm)
 
@@ -199,7 +215,9 @@ def process_dataframe(df_in: pd.DataFrame,
     pending_idx = df.index[pending].tolist()
 
     # universo alvo: todas as "Nova SubCat" (inclui "Excluir")
-    target_terms_pretty = mapping_df["Nova SubCat"].astype(str).dropna().unique().tolist()
+    target_terms_pretty = (
+        mapping_df["_Nova_SubCat_Clean"].astype(str).dropna().unique().tolist()
+    )
     target_terms_norm   = [norm_text(t) for t in target_terms_pretty]
     vec, X = _build_tfidf_index(target_terms_norm)
 
