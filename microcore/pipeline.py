@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from .utils import norm_text
 
 _LOJA_PREFIX_RE = re.compile(
-    r"^\s*(?:lojas?|postos?|est[úu]dios?|empresas?)\s+(?:de|da|do|das|dos)?\s*",
+    r"^\s*(?:lojas?|postos?|est[úu]dios?|empresas?|serviços?)\s+(?:de|da|do|das|dos)?\s*",
     re.IGNORECASE,
 )
 
