@@ -14,12 +14,14 @@ jobs:
   protocolo:
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      OBSERVATORIO_TOKEN: ${{ secrets.OBSERVATORIO_TOKEN }}
     steps:
       - name: Checkout do sistema
         uses: actions/checkout@v5
 
       - name: Checkout do contrato canônico
-        if: ${{ secrets.OBSERVATORIO_TOKEN != '' }}
+        if: env.OBSERVATORIO_TOKEN != ''
         uses: actions/checkout@v5
         with:
           repository: GabeBrain/observatorio
@@ -29,12 +31,12 @@ jobs:
             PROTOCOLO_SESSAO.md
             sistemas.json
             scripts/check-protocol.mjs
-          token: ${{ secrets.OBSERVATORIO_TOKEN }}
+          token: ${{ env.OBSERVATORIO_TOKEN }}
 
       - name: Verificar instruções de sessão
-        if: ${{ secrets.OBSERVATORIO_TOKEN != '' }}
+        if: env.OBSERVATORIO_TOKEN != ''
         run: node _observatorio/scripts/check-protocol.mjs --self . --repo "${{ github.repository }}"
 
       - name: Informar ausência da credencial
-        if: ${{ secrets.OBSERVATORIO_TOKEN == '' }}
+        if: env.OBSERVATORIO_TOKEN == ''
         run: echo "::warning::OBSERVATORIO_TOKEN não configurado; check do protocolo foi ignorado sem bloquear o trabalho."
