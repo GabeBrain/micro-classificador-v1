@@ -1,0 +1,40 @@
+name: Contrato do protocolo
+
+# Copie este arquivo para .github/workflows/protocolo.yml no sistema.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocolo:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout do sistema
+        uses: actions/checkout@v5
+
+      - name: Checkout do contrato canônico
+        if: ${{ secrets.OBSERVATORIO_TOKEN != '' }}
+        uses: actions/checkout@v5
+        with:
+          repository: GabeBrain/observatorio
+          ref: main
+          path: _observatorio
+          sparse-checkout: |
+            PROTOCOLO_SESSAO.md
+            sistemas.json
+            scripts/check-protocol.mjs
+          token: ${{ secrets.OBSERVATORIO_TOKEN }}
+
+      - name: Verificar instruções de sessão
+        if: ${{ secrets.OBSERVATORIO_TOKEN != '' }}
+        run: node _observatorio/scripts/check-protocol.mjs --self . --repo "${{ github.repository }}"
+
+      - name: Informar ausência da credencial
+        if: ${{ secrets.OBSERVATORIO_TOKEN == '' }}
+        run: echo "::warning::OBSERVATORIO_TOKEN não configurado; check do protocolo foi ignorado sem bloquear o trabalho."

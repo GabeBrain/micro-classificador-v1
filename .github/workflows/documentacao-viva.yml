@@ -1,0 +1,35 @@
+name: Documentação viva
+
+# Copie este arquivo para .github/workflows/documentacao-viva.yml no sistema.
+# O check é informativo: não impede push, merge ou deploy.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conferir-documentacao:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Localizar documento vivo do sistema
+        shell: bash
+        run: |
+          shopt -s nullglob globstar
+          documentos=(docs/projetos/LIVE_*.md docs/LIVE_*.md LIVE_*.md)
+          if [ ${#documentos[@]} -eq 0 ]; then
+            echo "::warning::Nenhum LIVE_*.md encontrado. O projeto continua funcionando; registre a documentação viva quando houver contexto para ela."
+            exit 0
+          fi
+
+          printf 'Documentação viva encontrada:\n%s\n' "${documentos[@]}"
+          for documento in "${documentos[@]}"; do
+            test -s "$documento" || { echo "::warning::$documento está vazio."; continue; }
+            grep -qE '^#' "$documento" || echo "::warning::$documento não possui título Markdown."
+          done
